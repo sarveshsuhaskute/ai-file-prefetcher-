@@ -1,0 +1,24 @@
+The full build, broken into phases
+Phase 1 — eBPF Telemetry Subsystem (matches your diagram's kernel-space box) Goal: prove you can see file syscalls flowing out of the kernel.
+	•	Write a bpftrace one-liner first, to sanity-check hooks work: bpftrace -e 'tracepoint:syscalls:sys_enter_openat { printf("%s %s\n", comm, str(args->filename)); }'
+	•	Then build the real version: a small C eBPF program (clang -target bpf) attaching kprobes/tracepoints to openat, read, close, writing {pid, comm, filename, timestamp} events into a BPF ring buffer.
+	•	Deliverable: run two terminals opening different files concurrently, see both streams correctly tagged by PID in your ring buffer output.
+Phase 2 — Trace Consumer + Pattern Mining Engine (your Review 2 target — capture + candidate generation) Goal: a userspace daemon reading the ring buffer and mining sequential patterns online.
+	•	Use Python + BCC first (bcc has ring-buffer examples out of the box) — fastest path to something working. You can migrate to Go (cilium/ebpf) or Rust (aya) later if you want the performance story, but it's not required for grading.
+	•	Implement an online version of C-Miner's approach: maintain a per-process sliding window of recent file accesses, incrementally update a frequency table of "after A, B follows," and generate ranked candidate next-files from it — no offline training pass.
+	•	Deliverable: feed it a synthetic access sequence, watch it predict correctly after seeing the pattern twice. This is your 60% checkpoint.
+Phase 3 — Context Signals + Context Fusion Goal: add the features your novelty claim depends on.
+	•	Capture PID→process name, wall-clock time bucket, and file extension alongside the raw sequence.
+	•	Fuse them with the candidate list from Phase 2 — simplest version is a weighted re-ranking (e.g., boost a candidate if it matches the same process or a similar time-of-day as past occurrences).
+Phase 4 — Confidence Scorer Goal: turn ranked candidates into a single 0–1 confidence number per prediction.
+	•	Start simple: a hand-tuned formula combining pattern frequency + context match strength. Upgrade to a small online logistic model later if time allows — don't over-engineer this first.
+Phase 5 — Prefetch / Eviction Controller (Actuation) Goal: actually do something with the confidence score.
+	•	Prefetch (do this first, it's the easy half): call posix_fadvise(fd, 0, 0, POSIX_FADV_WILLNEED) on files above your confidence threshold.
+	•	Eviction (the harder half): a true custom eviction hook needs kernel-level struct_ops like cache_ext [25] uses. Given your timeline, I'd treat this as a stretch goal — cache_ext's code is public, so forking/adapting it rather than building eviction control from scratch is a legitimate, honest path. If time runs short, ship prefetch-only for Review 3 and describe eviction as designed-but-not-fully-implemented rather than faking it.
+Phase 6 — Evaluation Harness Goal: baselines + metrics you can actually report.
+	•	Baselines: no-prefetch, default Linux readahead, your own re-implementation of the classical C-Miner-style approach (static, offline-mined).
+	•	Workload: a script simulating concurrent multi-app access (e.g., a build toolchain + a log-tailing script + a file-browsing script running together) — synthetic is fine and expected for a lab project.
+	•	Metrics: cache hit rate, average read latency, prefetch precision, and your daemon's own CPU/memory overhead.
+	•	Phase 7 — Live Deployment Test Run the full pipeline against the Phase 6 workload, collect numbers, produce your comparison graphs against baselines.
+	•	Phase 8 — Packaging for Review 3 Clean repo, README, demo script, final write-up mapping results back to your objectives.
+

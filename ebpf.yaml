@@ -1,0 +1,18 @@
+images:
+  - location: "https://cloud-images.ubuntu.com/releases/24.04/release/ubuntu-24.04-server-cloudimg-arm64.img"
+    arch: "aarch64"
+  - location: "https://cloud-images.ubuntu.com/releases/24.04/release/ubuntu-24.04-server-cloudimg-amd64.img"
+    arch: "x86_64"
+cpus: 4
+memory: "6GiB"
+disk: "30GiB"
+mounts:
+  - location: "~/prefetch-project"
+    writable: true
+provision:
+  - mode: system
+    script: |
+      apt-get update
+      apt-get install -y clang llvm libelf-dev libbpf-dev \
+        linux-tools-common linux-tools-generic linux-tools-$(uname -r) \
+        bpftrace python3-bpfcc bpfcc-tools build-essential git

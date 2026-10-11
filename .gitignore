@@ -1,0 +1,9 @@
+__pycache__/
+*.pyc
+*.dat
+*.log
+.DS_Store
+prompt next .txt
+knowledge .docx
+MAIN PRES.docx
+final run.docx
