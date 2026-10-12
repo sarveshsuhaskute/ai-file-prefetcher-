@@ -1,3 +1,8 @@
+> **Superseded in part.** A later re-measurement on a cleaned-up harness ([evaluation_v2.md](evaluation_v2.md)) found that
+> the 14 GB test was not actually under memory pressure, that the first run after data creation was contaminated by writeback,
+> and that the "26% throughput collapse" and the "eviction blindness" / "Python overhead" explanations were **not reproduced**.
+> This report is kept for the record; prefer evaluation_v2.md.
+
 # Final Evaluation Report: Context-Aware eBPF Prefetch Daemon
 
 ## 1. Executive Summary

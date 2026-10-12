@@ -23,7 +23,7 @@ def check_incore(fd, size):
     vec = ctypes.create_string_buffer(num_pages)
     libc.mincore.argtypes = [ctypes.c_void_p, ctypes.c_size_t, ctypes.c_char_p]
     libc.mincore(addr, size, vec)
-    resident_pages = sum(1 for i in range(num_pages) if vec[i][0] & 1)
+    resident_pages = vec.raw.count(1)      # mincore bytes are 0/1
     
     libc.munmap.argtypes = [ctypes.c_void_p, ctypes.c_size_t]
     libc.munmap(addr, size)
@@ -33,9 +33,10 @@ def do_read(filepath):
     size = os.path.getsize(filepath)
     fd = os.open(filepath, os.O_RDONLY)
     hit_rate = check_incore(fd, size)
+    t0 = time.perf_counter()
     with os.fdopen(fd, "rb") as f:
         f.read()
-    return hit_rate
+    return hit_rate, (time.perf_counter() - t0) * 1000.0   # (residency, read latency ms)
 
 def counts(scale):
     """Per-actor working-set sizes (files). scale=1.0 -> 400 files = 4 GB."""
@@ -59,7 +60,8 @@ def run_actor(name, prefix, n, duration, stats_queue, noise, shift_to=None):
             now = time.time()
             base = n if (shift_to and now >= shift_time) else 0   # context shift at t/2
             f = f"/tmp/{prefix}_{base + pick(i, n, noise)}.dat"
-            hits.append((int((now - start) // 5), do_read(f)))
+            hr, lat = do_read(f)
+            hits.append((int((now - start) // 5), hr, lat))
             time.sleep(0.01)
             i += 1
         stats_queue.append((name, hits))
@@ -104,8 +106,10 @@ def main():
         pr.join()
 
     bucket_hits, bucket_reads = {}, {}
+    lats = []
     for _, hits in results:
-        for bucket, hr in hits:
+        for bucket, hr, lat in hits:
+            lats.append(lat)
             bucket_hits[bucket] = bucket_hits.get(bucket, 0.0) + hr
             bucket_reads[bucket] = bucket_reads.get(bucket, 0) + 1
 
@@ -117,6 +121,10 @@ def main():
     overall = total_hits / total_reads * 100 if total_reads else 0
     print(f"RAW DATA -> Total Hits: {total_hits:.1f}, Total Reads: {total_reads}")
     print(f"Overall Cache Hit Rate: {overall:.2f}% (Total Reads: {total_reads})")
+    if lats:
+        lats.sort()
+        print(f"Read Latency ms: mean={sum(lats) / len(lats):.2f} p50={lats[len(lats) // 2]:.2f} "
+              f"p95={lats[int(len(lats) * 0.95)]:.2f} p99={lats[int(len(lats) * 0.99)]:.2f}")
 
 
 if __name__ == "__main__":

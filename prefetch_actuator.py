@@ -52,23 +52,75 @@ class PrecisionTracker:
 
 
 class MemoryMonitor:
-    """Reports memory pressure from MemAvailable/MemTotal (cached, cheap)."""
+    """Memory-pressure signal for throttling.
 
-    def __init__(self, low_frac=0.10, ttl=0.25, meminfo="/proc/meminfo"):
+    Pressure if ANY of:
+      * reclaim throughput >= reclaim_mb_s: pages stolen by kswapd/direct reclaim
+        per second (/proc/vmstat pgsteal_*). This is the signal that tracks
+        page-cache churn: measured ~1 GB/s when a 10 GB working set is squeezed
+        into ~3-7 GB of cache, ~0 when everything fits.
+      * PSI memory "some avg10" >= psi_threshold (task stalls; catches direct
+        reclaim / swap, but stayed ~0 under pure clean-cache churn).
+      * MemAvailable < low_frac * MemTotal (anonymous-memory exhaustion only;
+        MemAvailable counts reclaimable cache, so it never trips on churn).
+    """
+
+    def __init__(self, psi_threshold=5.0, low_frac=0.10, ttl=0.25, reclaim_mb_s=200.0,
+                 meminfo="/proc/meminfo", psi="/proc/pressure/memory", vmstat="/proc/vmstat"):
+        self.psi_threshold = psi_threshold
+        self.reclaim_mb_s = reclaim_mb_s
+        self.vmstat = vmstat
+        self._vm_prev = None            # (time, pages_reclaimed)
+        self._reclaim_rate = 0.0
+        self.last_reclaim_mb_s = None
         self.low_frac = low_frac
         self.ttl = ttl
         self.meminfo = meminfo
-        self._t = 0.0
+        self.psi = psi
+        self._t = -1e9
         self._pressure = False
+        self.last_psi = None
 
     def under_pressure(self):
         now = time.monotonic()
         if now - self._t >= self.ttl:
             self._t = now
-            self._pressure = self._read()
+            self._pressure = bool(self._read_reclaim() | self._read_psi() | self._read_meminfo())
         return self._pressure
 
-    def _read(self):
+    def _read_reclaim(self):
+        """MB/s reclaimed, recomputed at most once per second."""
+        try:
+            now = time.monotonic()
+            if self._vm_prev is not None and now - self._vm_prev[0] < 1.0:
+                return self._reclaim_rate >= self.reclaim_mb_s
+            pages = 0
+            with open(self.vmstat) as fh:
+                for line in fh:
+                    if line.startswith("pgsteal_"):
+                        pages += int(line.split()[1])
+            if self._vm_prev is not None:
+                dt = now - self._vm_prev[0]
+                self._reclaim_rate = (pages - self._vm_prev[1]) * 4096 / 1048576 / dt
+                self.last_reclaim_mb_s = self._reclaim_rate
+            self._vm_prev = (now, pages)
+            return self._reclaim_rate >= self.reclaim_mb_s
+        except (OSError, ValueError):
+            return False
+
+    def _read_psi(self):
+        try:
+            with open(self.psi) as fh:
+                for line in fh:
+                    if line.startswith("some"):
+                        fields = dict(kv.split("=") for kv in line.split()[1:])
+                        self.last_psi = float(fields["avg10"])
+                        return self.last_psi >= self.psi_threshold
+        except (OSError, KeyError, ValueError):
+            self.last_psi = None
+        return False
+
+    def _read_meminfo(self):
         try:
             vals = {}
             with open(self.meminfo) as fh:

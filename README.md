@@ -4,7 +4,7 @@ This project is a userspace, context-aware AI prefetching daemon for Linux. It u
 
 The fundamental goal of this project was to determine whether a dynamically trained userspace AI could outperform the default Linux kernel's highly optimized readahead mechanisms under varying memory pressures. 
 
-**Spoiler (original daemon):** It does not. The true contribution of this project is the diagnostic isolation of exactly *why* userspace AI struggles against mature kernel subsystems, providing concrete architectural lessons for future implementations.
+**Spoiler:** It does not (re-confirmed on a cleaned-up harness, see [evaluation_v2](docs/evaluation_v2.md)). The true contribution of this project is the diagnostic isolation of exactly *why* userspace AI struggles against mature kernel subsystems, providing concrete architectural lessons for future implementations.
 
 ## Results Summary
 The system was evaluated strictly against the default Linux kernel under both normal load and memory-exhaustion stress tests. 
@@ -12,7 +12,7 @@ The system was evaluated strictly against the default Linux kernel under both no
 - **Under normal conditions (4GB working set / 11GB RAM):** The AI achieves exact performance parity with the kernel (both at 99.25% hit rate). The OS caches the data entirely, rendering the AI's 99.9% precision functionally redundant.
 - **Under memory pressure (14GB working set / 11GB RAM):** The AI loses to the kernel, suffering a ~26% throughput collapse. This was traced directly to userspace computational overhead (context switching and tree updates) and an eviction-blindness flaw where the AI continuously prefetches data that the OS immediately evicts.
 
-For the full breakdown of the methodology, evaluation, and diagnostic findings, read the [Final Evaluation Report](docs/final_evaluation_report.md).
+**Current results:** [docs/evaluation_v2.md](docs/evaluation_v2.md). The original [Final Evaluation Report](docs/final_evaluation_report.md) is kept for the record, but its "26% collapse" and its causal explanations did not reproduce.
 
 ---
 
@@ -81,8 +81,11 @@ The first evaluation (`docs/final_evaluation_report.md`) is kept as-is for the r
 - Daemon uses `ring_buffer_poll` instead of `sleep(0.1)` polling and reports per-event overhead.
 - `workload.py` takes `--scale/--noise`; `eval_runner.py` takes CLI args and runs the ablations.
 
-**Not yet re-measured on hardware:** the Phase 6/7 numbers in the reports were produced by the
-*original* daemon. Whether the changes above close the 14 GB gap is untested; that is the next experiment.
+**Re-measured on hardware** (Linux 6.8 VM): the daemon runs on real eBPF, and a cleaned-up harness (writeback settle,
+warm-up, interleaving, latency) shows no configuration beating default Linux; the original 26% collapse did not reproduce.
+Details and caveats in [docs/evaluation_v2.md](docs/evaluation_v2.md). The pressure signal is now reclaim throughput
+(`--reclaim-mb-s`), because `MemAvailable` never fired. `eval_runner.py` also takes `--workload real`
+(`realworld.py`) and `--ballast-gb` to create controlled memory pressure.
 
 ---
 

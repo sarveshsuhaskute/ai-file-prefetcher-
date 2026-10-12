@@ -132,13 +132,39 @@ class ActuatorTests(unittest.TestCase):
         t.record_read("zzz")
         self.assertEqual((t.useful, t.total), (1, 1))
 
+    def test_reclaim_rate_signal(self):
+        with tempfile.NamedTemporaryFile("w", delete=False) as fh:
+            fh.write("pgsteal_kswapd 0\npgsteal_direct 0\npgscan_kswapd 999\n")
+        try:
+            m = MemoryMonitor(reclaim_mb_s=100, ttl=0, vmstat=fh.name, psi="/nonexistent", meminfo="/nonexistent")
+            self.assertFalse(m.under_pressure())            # first sample: no rate yet
+            with open(fh.name, "w") as f2:                  # +51200 pages = 200 MB
+                f2.write("pgsteal_kswapd 40000\npgsteal_direct 11200\npgscan_kswapd 999\n")
+            m._vm_prev = (m._vm_prev[0] - 1.0, m._vm_prev[1])   # pretend 1 s elapsed
+            self.assertTrue(m.under_pressure())
+            self.assertAlmostEqual(m.last_reclaim_mb_s, 200.0, delta=5)
+        finally:
+            os.unlink(fh.name)
+
+    def test_psi_parsing_and_threshold(self):
+        with tempfile.NamedTemporaryFile("w", delete=False) as fh:
+            fh.write("some avg10=7.50 avg60=1.00 avg300=0.10 total=123\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=0\n")
+        try:
+            hot = MemoryMonitor(psi_threshold=5.0, ttl=0, psi=fh.name, meminfo="/nonexistent", vmstat="/nonexistent")
+            self.assertTrue(hot.under_pressure())
+            self.assertEqual(hot.last_psi, 7.5)
+            cool = MemoryMonitor(psi_threshold=10.0, ttl=0, psi=fh.name, meminfo="/nonexistent", vmstat="/nonexistent")
+            self.assertFalse(cool.under_pressure())
+        finally:
+            os.unlink(fh.name)
+
     def test_meminfo_parsing(self):
         with tempfile.NamedTemporaryFile("w", suffix=".mi", delete=False) as fh:
             fh.write("MemTotal: 1000 kB\nMemFree: 5 kB\nMemAvailable: 50 kB\n")
         try:
-            self.assertTrue(MemoryMonitor(low_frac=0.1, ttl=0, meminfo=fh.name).under_pressure())
-            self.assertFalse(MemoryMonitor(low_frac=0.01, ttl=0, meminfo=fh.name).under_pressure())
-            self.assertFalse(MemoryMonitor(meminfo="/nonexistent").under_pressure())
+            self.assertTrue(MemoryMonitor(low_frac=0.1, ttl=0, meminfo=fh.name, psi="/nonexistent", vmstat="/nonexistent").under_pressure())
+            self.assertFalse(MemoryMonitor(low_frac=0.01, ttl=0, meminfo=fh.name, psi="/nonexistent", vmstat="/nonexistent").under_pressure())
+            self.assertFalse(MemoryMonitor(meminfo="/nonexistent", psi="/nonexistent", vmstat="/nonexistent").under_pressure())
         finally:
             os.unlink(fh.name)
 

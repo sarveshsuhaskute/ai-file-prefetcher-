@@ -42,12 +42,21 @@ static inline bool filter_noise(const char *filename) {
     if (filename[0] == '/' && filename[1] == 'd' && filename[2] == 'e' && filename[3] == 'v') return true;
     if (filename[0] == '/' && filename[1] == 'e' && filename[2] == 't' && filename[3] == 'c') return true;
 
-    for (int i = 0; i < 250 && i < 256; i++) {
-        if (filename[i] == '\0') break;
-        if (filename[i] == '.' && filename[i+1] == 's' && filename[i+2] == 'o') return true;
-        if (filename[i] == '.' && filename[i+1] == 'p' && filename[i+2] == 'y' && filename[i+3] == 'c') return true;
-        if (filename[i] == '.' && filename[i+1] == 'c' && filename[i+2] == 'a' && filename[i+3] == 'c' && filename[i+4] == 'h' && filename[i+5] == 'e') return true;
-        if (filename[i] == 'l' && filename[i+1] == 'o' && filename[i+2] == 'c' && filename[i+3] == 'a' && filename[i+4] == 'l' && filename[i+5] == 'e') return true;
+    for (int i = 0; i < 248; i++) {
+        char c = filename[i];
+        if (c == '\0') break;
+        if (c != '.' && c != '/') continue;
+        // shared libs / bytecode: ".so" or ".so.N" / ".pyc" at a name boundary
+        if (c == '.' && filename[i+1] == 's' && filename[i+2] == 'o' &&
+            (filename[i+3] == '\0' || filename[i+3] == '.')) return true;
+        if (c == '.' && filename[i+1] == 'p' && filename[i+2] == 'y' && filename[i+3] == 'c' &&
+            filename[i+4] == '\0') return true;
+        // path components only: "/.cache/" and "/locale/"
+        if (c == '/' && filename[i+1] == '.' && filename[i+2] == 'c' && filename[i+3] == 'a' &&
+            filename[i+4] == 'c' && filename[i+5] == 'h' && filename[i+6] == 'e' && filename[i+7] == '/') return true;
+        if (c == '/' && filename[i+1] == 'l' && filename[i+2] == 'o' && filename[i+3] == 'c' &&
+            filename[i+4] == 'a' && filename[i+5] == 'l' && filename[i+6] == 'e' &&
+            (filename[i+7] == '/' || filename[i+7] == '\0')) return true;
     }
     return false;
 }
@@ -147,8 +156,12 @@ def main():
     parser.add_argument("--model-path", default=os.path.expanduser("~/.cache/prefetch_model.json"))
     parser.add_argument("--top-k", type=int, default=2, help="max prefetches per open event")
     parser.add_argument("--threshold", type=float, default=0.5, help="min confidence to prefetch")
+    parser.add_argument("--reclaim-mb-s", type=float, default=200.0,
+                        help="throttle prefetching when the kernel reclaims >= this many MB/s of page cache")
+    parser.add_argument("--psi-threshold", type=float, default=5.0,
+                        help="throttle prefetching when memory PSI some-avg10 (%% stalled) >= this")
     parser.add_argument("--low-mem-frac", type=float, default=0.10,
-                        help="throttle prefetching when MemAvailable < this fraction of MemTotal")
+                        help="fallback (no PSI): throttle when MemAvailable < this fraction of MemTotal")
     parser.add_argument("--no-mem-aware", action="store_true",
                         help="disable memory-pressure throttling")
     args = parser.parse_args()
@@ -158,7 +171,9 @@ def main():
     os.makedirs(os.path.dirname(args.model_path), exist_ok=True)
     model = PrefetchModel(mode=args.mode)
     tracker = PrecisionTracker()
-    mem = MemoryMonitor(low_frac=0.0 if args.no_mem_aware else args.low_mem_frac)
+    mem = MemoryMonitor(psi_threshold=1e9 if args.no_mem_aware else args.psi_threshold,
+                        reclaim_mb_s=1e12 if args.no_mem_aware else args.reclaim_mb_s,
+                        low_frac=0.0 if args.no_mem_aware else args.low_mem_frac)
     actuator = Actuator(tracker, memory=mem, hi=args.threshold, top_k=args.top_k)
 
     if args.mode == "static":
@@ -168,7 +183,7 @@ def main():
 
     my_pid = os.getpid()
     print(f"Daemon PID: {my_pid}")
-    b = BPF(text=bpf_source.replace("DAEMON_PID", str(my_pid)))
+    b = BPF(text=bpf_source, cflags=[f"-DDAEMON_PID={my_pid}"])
     b.attach_tracepoint(tp="syscalls:sys_enter_openat", fn_name="trace_enter_openat")
     b.attach_tracepoint(tp="syscalls:sys_exit_openat", fn_name="trace_exit_openat")
     b.attach_tracepoint(tp="syscalls:sys_enter_read", fn_name="trace_enter_read")
