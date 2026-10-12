@@ -1,5 +1,10 @@
 # Evaluation v2: re-measurement on a cleaned-up harness
 
+> **PROVISIONAL.** All tables below except the last section were measured **before** the WILLNEED fix: a single
+> `posix_fadvise(WILLNEED)` over a 10 MB file loads only ~12% of it on Linux 6.8 (1 MB chunks load 100%), so the
+> prefetcher was mostly a no-op for large files in those runs. Conclusions 1, 3 and 4 below may not hold. Only the
+> slow-disk experiment (last section) has been rerun with the fixed actuator; the 14 GB-pressure and 30%-noise reruns are pending.
+
 Raw logs: [`docs/raw/`](raw/). Environment: Lima VM, Linux 6.8, 11.9 GB RAM, virtio disk, 4 vCPU.
 All runs: page cache dropped (after waiting out writeback) before every run, one discarded warm-up,
 baselines interleaved across iterations. "Hit rate" = `mincore()` residency just before each read.
@@ -69,3 +74,18 @@ evidence about prediction quality.
 Single VM, small n (3-5), 40-60 s runs, one unexplained outlier, synthetic workload except the last table, whole-file
 `WILLNEED` only, relative-path opens cannot be prefetched. Where prefetching could help (idle I/O to overlap, slower
 storage, partial-file/offset prediction) was not tested; the virtio disk here is very fast.
+
+## Rerun with the WILLNEED fix: slow disk + think time (the regime where prefetch should help)
+Setup: cgroup disk cap 400 MB/s, 100 ms think time per file, 9 GB ballast (cache ~2.4 GB vs ~3 GB active set), 4 iterations,
+60 s runs. Log: `docs/raw/v3_slowdisk400MBs_think100ms_ballast9GB_chunked_willneed.log`.
+
+| Baseline | Hit rate | Reads/run | Latency mean / p50 / p95 / p99 (ms) | Prefetches (precision) |
+|---|---|---|---|---|
+| No daemon | 1.1% ± 0.2 | 2319 | 65.8 / 79.5 / 94.4 / 97.8 | - |
+| Full, throttling on | 1.2% ± 0.4 | 2311 | 66.2 / 80.1 / 93.9 / 97.5 | 26 issued, 1931 throttled |
+| Full, throttling off | 43.8% ± 1.7 | 2443 (+5.4%) | 62.1 / 73.5 / 167.5 / 285.6 | 1924 (99.3%) |
+
+Reading: with prefetching actually working, residency goes from 1% to 44% and throughput rises ~5%, mean latency
+falls ~6% and p50 ~8%. But **tail latency gets much worse** (p95 94 -> 167 ms, p99 98 -> 286 ms): prefetch I/O competes
+with demand reads for the capped disk. The throttled daemon is identical to no daemon (the reclaim threshold trips on
+nearly every event). So: a modest mean/median win and a clear tail-latency cost, on one workload, n=4.
