@@ -4,7 +4,7 @@ This project is a userspace, context-aware AI prefetching daemon for Linux. It u
 
 The fundamental goal of this project was to determine whether a dynamically trained userspace AI could outperform the default Linux kernel's highly optimized readahead mechanisms under varying memory pressures. 
 
-**Spoiler:** It does not. The true contribution of this project is the diagnostic isolation of exactly *why* userspace AI struggles against mature kernel subsystems, providing concrete architectural lessons for future implementations.
+**Spoiler (original daemon):** It does not. The true contribution of this project is the diagnostic isolation of exactly *why* userspace AI struggles against mature kernel subsystems, providing concrete architectural lessons for future implementations.
 
 ## Results Summary
 The system was evaluated strictly against the default Linux kernel under both normal load and memory-exhaustion stress tests. 
@@ -46,33 +46,43 @@ This project relies heavily on eBPF and kernel tracing, which requires a Linux e
 
 ## Running the Evaluation Harness
 
-The evaluation harness (`eval_runner.py`) generates a synthetic workload of interconnected file accesses and pits the AI daemon against the default Linux kernel. 
-
-### Phase 6: Memory Pressure Stress Test
-To run the adversarial stress test (14GB working set vs 11GB RAM), ensure the `workload.py` script is configured to generate 1400 files, and run:
+Everything below runs inside the Lima VM as root (needs eBPF + `drop_caches`).
 
 ```bash
-# Inside the Lima VM
-sudo python3 eval_runner.py
+# Phase 7-style: 4 GB working set (fits in RAM), 3 runs per baseline
+sudo python3 eval_runner.py --baselines none,seq,full --scale 1.0
+
+# Phase 6-style: 14 GB working set vs 11 GB RAM, and the memory-throttling A/B test
+sudo python3 eval_runner.py --baselines none,full,full-nomem --scale 3.5
+
+# Add unpredictable accesses (30% random) to stop the workload being trivially cyclic
+sudo python3 eval_runner.py --baselines none,static,seq,full --noise 0.3
 ```
-This will sequentially run the 4 isolated baselines (No Daemon, Static Miner, Sequence-Only, and Full AI) and print the cache hit rates and throughput metrics.
+The harness logs daemon output to a file (the old `[Interval Stats]` pipe/filter bug that made
+interval prints vanish is fixed), so the endurance run no longer needs to bypass it:
+`--duration 300` prints the per-minute RSS / model-size lines.
 
-### Phase 7: Normal Load & Endurance Test
-To run the endurance test (4GB working set) and verify there are no memory leaks over a 5-minute run, the evaluation harness must be bypassed (due to a known subprocess stdout capture bug in `eval_runner.py`).
+Daemon knobs: `--top-k` (max prefetches per open), `--threshold`, `--low-mem-frac`,
+`--no-mem-aware`. Models are saved as JSON (`~/.cache/prefetch_model.json`), not pickle.
 
-1. Configure `workload.py` to `100` files per worker (~4GB total).
-2. Run the isolated test:
+## Offline tools (work on any OS, no eBPF)
 ```bash
-# Start the workload in the background
-sudo python3 workload.py 300 &
+python3 -m unittest discover -s tests   # model + actuator unit tests
+python3 simulate.py                     # cache simulator: which workloads benefit? -> docs/simulation_results.md
+```
 
-# Start the daemon directly for 5 minutes and capture interval stats
-sudo timeout 305 python3 -u prefetch_daemon.py --mode full > /tmp/daemon_raw.log 2>&1
-```
-3. Check the logs for memory stability:
-```bash
-grep "Interval Stats" /tmp/daemon_raw.log
-```
+## What changed after the original evaluation
+The first evaluation (`docs/final_evaluation_report.md`) is kept as-is for the record. Since then:
+- `prefetch_model.py`: model split from the daemon, no per-event list rebuilds, bounded memory
+  (context pruning, per-PID cap), JSON persistence.
+- `prefetch_actuator.py`: **memory-pressure throttling** from `/proc/meminfo`, reclaim of unused
+  prefetches with `DONTNEED`, top-k fan-out, de-dup cooldown, and a real worker pool
+  (the original README claimed a thread pool that did not exist).
+- Daemon uses `ring_buffer_poll` instead of `sleep(0.1)` polling and reports per-event overhead.
+- `workload.py` takes `--scale/--noise`; `eval_runner.py` takes CLI args and runs the ablations.
+
+**Not yet re-measured on hardware:** the Phase 6/7 numbers in the reports were produced by the
+*original* daemon. Whether the changes above close the 14 GB gap is untested; that is the next experiment.
 
 ---
 
