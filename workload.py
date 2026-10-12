@@ -48,7 +48,7 @@ def pick(i, n, noise):
     return random.randrange(n) if noise and random.random() < noise else i % n
 
 
-def run_actor(name, prefix, n, duration, stats_queue, noise, shift_to=None):
+def run_actor(name, prefix, n, duration, stats_queue, noise, shift_to=None, think=0.01):
     try:
         set_comm(name)
         random.seed(os.getpid())
@@ -62,7 +62,7 @@ def run_actor(name, prefix, n, duration, stats_queue, noise, shift_to=None):
             f = f"/tmp/{prefix}_{base + pick(i, n, noise)}.dat"
             hr, lat = do_read(f)
             hits.append((int((now - start) // 5), hr, lat))
-            time.sleep(0.01)
+            time.sleep(think)                       # per-file 'processing' time = idle I/O to overlap
             i += 1
         stats_queue.append((name, hits))
     except BaseException as e:
@@ -86,7 +86,10 @@ def main():
     ap.add_argument("--setup", action="store_true", help="create the data files and exit")
     ap.add_argument("--scale", type=float, default=1.0, help="working-set multiplier (3.5 ~ 14 GB)")
     ap.add_argument("--noise", type=float, default=0.0, help="probability of a random (unpredictable) access")
+    ap.add_argument("--think-ms", type=float, default=10.0,
+                    help="per-file processing time; large values leave idle I/O a prefetcher can use")
     args = ap.parse_args()
+    think = args.think_ms / 1000.0
 
     if args.setup:
         setup_files(args.scale)
@@ -96,9 +99,9 @@ def main():
     manager = multiprocessing.Manager()
     results = manager.list()
     procs = [
-        multiprocessing.Process(target=run_actor, args=("builder", "builder", b, args.duration, results, args.noise, True)),
-        multiprocessing.Process(target=run_actor, args=("logger", "tailer", t, args.duration, results, args.noise)),
-        multiprocessing.Process(target=run_actor, args=("processor", "processor", p, args.duration, results, args.noise)),
+        multiprocessing.Process(target=run_actor, args=("builder", "builder", b, args.duration, results, args.noise, True, think)),
+        multiprocessing.Process(target=run_actor, args=("logger", "tailer", t, args.duration, results, args.noise, None, think)),
+        multiprocessing.Process(target=run_actor, args=("processor", "processor", p, args.duration, results, args.noise, None, think)),
     ]
     for pr in procs:
         pr.start()

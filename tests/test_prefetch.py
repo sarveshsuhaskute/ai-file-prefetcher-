@@ -73,6 +73,32 @@ class ModelTests(unittest.TestCase):
         self.assertLessEqual(len(m.history), 8)
 
 
+class FadviseTests(unittest.TestCase):
+    def test_willneed_is_chunked(self):
+        import prefetch_actuator as pa
+        calls = []
+        orig = os.posix_fadvise if hasattr(os, "posix_fadvise") else None
+        os.posix_fadvise = lambda fd, off, ln, adv: calls.append((off, ln, adv))
+        try:
+            with tempfile.NamedTemporaryFile(delete=False) as fh:
+                fh.write(b"x" * (int(2.5 * (1 << 20))))
+            pa._fadvise(fh.name, FADV_WILLNEED)
+            self.assertEqual([c[0] for c in calls], [0, 1 << 20, 2 << 20])
+            self.assertEqual(sum(c[1] for c in calls), int(2.5 * (1 << 20)))
+            calls.clear()
+            pa._fadvise(fh.name, FADV_WILLNEED, max_bytes=1 << 20)       # cap respected
+            self.assertEqual(len(calls), 1)
+            calls.clear()
+            pa._fadvise(fh.name, FADV_DONTNEED)                          # evict stays whole-file
+            self.assertEqual(calls, [(0, 0, FADV_DONTNEED)])
+        finally:
+            if orig:
+                os.posix_fadvise = orig
+            else:
+                del os.posix_fadvise
+            os.unlink(fh.name)
+
+
 class FakeMem(MemoryMonitor):
     def __init__(self, pressure):
         super().__init__()

@@ -56,7 +56,7 @@ def psi_some_avg10():
         return 0.0
 
 
-def run_workload_iteration(daemon_mode, duration, scale, noise, workload, extra_daemon_args=()):
+def run_workload_iteration(daemon_mode, duration, scale, noise, workload, think_ms=10.0, extra_daemon_args=()):
     drop_caches()
 
     daemon_proc = log = None
@@ -149,6 +149,7 @@ def main():
     ap.add_argument("--workload", choices=["synthetic", "real"], default="synthetic",
                     help="synthetic = workload.py; real = realworld.py (walks /usr, #include graph)")
     ap.add_argument("--ballast-gb", type=float, default=0.0, help="anonymous memory held to squeeze the page cache")
+    ap.add_argument("--think-ms", type=float, default=10.0, help="per-file processing time in workload.py")
     ap.add_argument("--warmup", type=int, default=1, help="discarded no-daemon runs before measuring")
     args = ap.parse_args()
 
@@ -176,14 +177,14 @@ def main():
     for w in range(args.warmup):
         print(f"\n--- warm-up {w + 1}/{args.warmup} (discarded)")
         run_workload_iteration(None, duration=args.duration, scale=args.scale, noise=args.noise,
-                               workload=args.workload)
+                               workload=args.workload, think_ms=args.think_ms)
     for it in range(args.iterations):
         for key in chosen:
             name, mode, extra = BASELINES[key]
             print(f"\n--- iteration {it + 1}/{args.iterations}: {name}")
             results[key].append(run_workload_iteration(
                 mode, duration=args.duration, scale=args.scale, noise=args.noise,
-                workload=args.workload, extra_daemon_args=extra))
+                workload=args.workload, think_ms=args.think_ms, extra_daemon_args=extra))
             print(f"    hit={results[key][-1][0]:.2f}% reads={results[key][-1][1]} lat={results[key][-1][2]}")
     print(f"\n{'=' * 60}\nSUMMARY\n{'=' * 60}")
     for key in chosen:
