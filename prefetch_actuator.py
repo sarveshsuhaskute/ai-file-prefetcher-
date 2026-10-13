@@ -55,7 +55,8 @@ class MemoryMonitor:
     """Memory-pressure signal for throttling.
 
     Pressure if ANY of:
-      * reclaim throughput >= reclaim_mb_s: pages stolen by kswapd/direct reclaim
+      * reclaim throughput >= reclaim_mb_s (0 = disabled, the default: measured to
+        switch off a prefetcher that was helping, see docs/evaluation_v2.md): pages stolen by kswapd/direct reclaim
         per second (/proc/vmstat pgsteal_*). This is the signal that tracks
         page-cache churn: measured ~1 GB/s when a 10 GB working set is squeezed
         into ~3-7 GB of cache, ~0 when everything fits.
@@ -65,7 +66,7 @@ class MemoryMonitor:
         MemAvailable counts reclaimable cache, so it never trips on churn).
     """
 
-    def __init__(self, psi_threshold=5.0, low_frac=0.10, ttl=0.25, reclaim_mb_s=200.0,
+    def __init__(self, psi_threshold=5.0, low_frac=0.10, ttl=0.25, reclaim_mb_s=0.0,
                  meminfo="/proc/meminfo", psi="/proc/pressure/memory", vmstat="/proc/vmstat"):
         self.psi_threshold = psi_threshold
         self.reclaim_mb_s = reclaim_mb_s
@@ -90,6 +91,8 @@ class MemoryMonitor:
 
     def _read_reclaim(self):
         """MB/s reclaimed, recomputed at most once per second."""
+        if self.reclaim_mb_s <= 0:
+            return False
         try:
             now = time.monotonic()
             if self._vm_prev is not None and now - self._vm_prev[0] < 1.0:

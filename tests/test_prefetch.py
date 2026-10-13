@@ -172,6 +172,11 @@ class ActuatorTests(unittest.TestCase):
         finally:
             os.unlink(fh.name)
 
+    def test_reclaim_signal_off_by_default(self):
+        m = MemoryMonitor(ttl=0, vmstat="/nonexistent", psi="/nonexistent", meminfo="/nonexistent")
+        self.assertEqual(m.reclaim_mb_s, 0.0)
+        self.assertFalse(m._read_reclaim())
+
     def test_psi_parsing_and_threshold(self):
         with tempfile.NamedTemporaryFile("w", delete=False) as fh:
             fh.write("some avg10=7.50 avg60=1.00 avg300=0.10 total=123\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=0\n")

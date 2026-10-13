@@ -156,8 +156,9 @@ def main():
     parser.add_argument("--model-path", default=os.path.expanduser("~/.cache/prefetch_model.json"))
     parser.add_argument("--top-k", type=int, default=2, help="max prefetches per open event")
     parser.add_argument("--threshold", type=float, default=0.5, help="min confidence to prefetch")
-    parser.add_argument("--reclaim-mb-s", type=float, default=200.0,
-                        help="throttle prefetching when the kernel reclaims >= this many MB/s of page cache")
+    parser.add_argument("--reclaim-mb-s", type=float, default=0.0,
+                        help="throttle prefetching when the kernel reclaims >= this many MB/s of page cache "
+                             "(0 = off, default: at 200 it disabled a helpful prefetcher in every experiment)")
     parser.add_argument("--psi-threshold", type=float, default=5.0,
                         help="throttle prefetching when memory PSI some-avg10 (%% stalled) >= this")
     parser.add_argument("--low-mem-frac", type=float, default=0.10,
@@ -172,7 +173,7 @@ def main():
     model = PrefetchModel(mode=args.mode)
     tracker = PrecisionTracker()
     mem = MemoryMonitor(psi_threshold=1e9 if args.no_mem_aware else args.psi_threshold,
-                        reclaim_mb_s=1e12 if args.no_mem_aware else args.reclaim_mb_s,
+                        reclaim_mb_s=0.0 if args.no_mem_aware else args.reclaim_mb_s,
                         low_frac=0.0 if args.no_mem_aware else args.low_mem_frac)
     actuator = Actuator(tracker, memory=mem, hi=args.threshold, top_k=args.top_k)
 
