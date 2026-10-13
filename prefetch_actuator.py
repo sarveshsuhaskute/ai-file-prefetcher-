@@ -161,7 +161,8 @@ def _fadvise(path, advice, max_bytes=MAX_PREFETCH_BYTES):
 
 class Actuator:
     def __init__(self, tracker, memory=None, hi=0.5, top_k=2, cooldown=5.0,
-                 workers=2, max_queue=256, advise=_fadvise):
+                 workers=2, max_queue=256, advise=_fadvise,
+                 max_inflight_mb=0, sizeof=None):
         self.tracker = tracker
         self.memory = memory or MemoryMonitor()
         self.hi = hi
@@ -171,9 +172,13 @@ class Actuator:
         self._advise = advise
         self._recent = {}               # file -> last prefetch time
         self._pending = 0
+        self._pending_bytes = 0
+        self.max_inflight = int(max_inflight_mb * 1048576)   # 0 = unlimited
+        self._sizeof = sizeof or self._stat_size
+        self._sizes = {}
         self._lock = threading.Lock()
         self._pool = ThreadPoolExecutor(max_workers=workers, thread_name_prefix="fadvise")
-        self.stats = {"issued": 0, "throttled_mem": 0, "deduped": 0, "dropped_queue": 0}
+        self.stats = {"issued": 0, "throttled_mem": 0, "deduped": 0, "dropped_queue": 0, "dropped_inflight": 0}
 
     def submit(self, predictions):
         """predictions: [(file, confidence)] sorted descending."""
@@ -189,14 +194,21 @@ class Actuator:
             if now - self._recent.get(f, -1e9) < self.cooldown:
                 self.stats["deduped"] += 1
                 continue
+            size = self._size(f) if self.max_inflight else 0
             with self._lock:
                 if self._pending >= self.max_queue:
                     self.stats["dropped_queue"] += 1
                     continue
+                if self.max_inflight and self._pending_bytes + size > self.max_inflight:
+                    # Tail-latency guard: queued prefetch bytes delay demand reads
+                    # (penalty ~ bytes_in_flight / bandwidth), so bound them.
+                    self.stats["dropped_inflight"] += 1
+                    continue
                 self._pending += 1
+                self._pending_bytes += size
             self._recent[f] = now
             self.tracker.record_prefetch(f)
-            self._pool.submit(self._run, f, FADV_WILLNEED)
+            self._pool.submit(self._run, f, FADV_WILLNEED, size)
             self.stats["issued"] += 1
             issued += 1
         if len(self._recent) > 50_000:   # bound the dedupe table
@@ -211,7 +223,21 @@ class Actuator:
             self.tracker.evictions += 1
             self._pool.submit(self._run, f, FADV_DONTNEED)
 
-    def _run(self, path, advice):
+    def _stat_size(self, path):
+        try:
+            return min(os.stat(path).st_size, MAX_PREFETCH_BYTES)
+        except OSError:
+            return 0
+
+    def _size(self, path):
+        s = self._sizes.get(path)
+        if s is None:
+            if len(self._sizes) > 100_000:
+                self._sizes.clear()
+            s = self._sizes[path] = self._sizeof(path)
+        return s
+
+    def _run(self, path, advice, size=0):
         try:
             self._advise(path, advice)
         except OSError:
@@ -219,6 +245,7 @@ class Actuator:
         finally:
             with self._lock:
                 self._pending -= 1
+                self._pending_bytes -= size
 
     def close(self):
         self._pool.shutdown(wait=True)

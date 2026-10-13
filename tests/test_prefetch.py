@@ -151,6 +151,23 @@ class ActuatorTests(unittest.TestCase):
         gate.set()
         act.close()
 
+    def test_inflight_byte_cap(self):
+        import threading
+        gate = threading.Event()
+        act = Actuator(PrecisionTracker(), memory=FakeMem(False), workers=1, top_k=10, max_inflight_mb=25,
+                       sizeof=lambda p: 10 << 20, advise=lambda p, a: gate.wait(2))
+        act.submit([(f"f{i}", 0.9) for i in range(6)])     # 10 MB each, 25 MB cap -> 2 fit
+        self.assertEqual(act.stats["issued"], 2)
+        self.assertEqual(act.stats["dropped_inflight"], 4)
+        gate.set()
+        act.close()
+        self.assertEqual(act._pending_bytes, 0)             # released after completion
+        act2 = Actuator(PrecisionTracker(), memory=FakeMem(False), top_k=10, sizeof=lambda p: 10 << 20,
+                        advise=lambda p, a: None)
+        act2.submit([(f"g{i}", 0.9) for i in range(6)])     # cap off -> unlimited
+        act2.close()
+        self.assertEqual(act2.stats["issued"], 6)
+
     def test_precision_tracker(self):
         t = PrecisionTracker(window=5)
         t.record_prefetch("a")

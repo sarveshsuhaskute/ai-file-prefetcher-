@@ -127,7 +127,19 @@ def summarize(name, runs):
         print("   ", l)
 
 
+def set_readahead(kb, dev):
+    """Kernel's own knob: per-device readahead window. Returns the previous value."""
+    path = f"/sys/block/{dev}/queue/read_ahead_kb"
+    with open(path) as fh:
+        old = fh.read().strip()
+    with open(path, "w") as fh:
+        fh.write(str(kb))
+    return old
+
+
 BASELINES = {
+    "ra-tuned": ("7. No daemon, kernel readahead tuned (read_ahead_kb=8192)", None, ()),
+    "full-cap": ("8. Full AI, in-flight prefetch capped at 32 MB", "full", ("--max-inflight-mb", "32")),
     "none": ("1. No Daemon (Default Linux Readahead)", None, ()),
     "static": ("2. Static Miner (Offline-Trained)", "static", ()),
     "seq": ("3. Sequence-Only Online Miner (Ablation)", "seq", ()),
@@ -150,6 +162,7 @@ def main():
                     help="synthetic = workload.py; real = realworld.py (walks /usr, #include graph)")
     ap.add_argument("--ballast-gb", type=float, default=0.0, help="anonymous memory held to squeeze the page cache")
     ap.add_argument("--think-ms", type=float, default=10.0, help="per-file processing time in workload.py")
+    ap.add_argument("--ra-dev", default="vda", help="block device whose read_ahead_kb the ra-tuned baseline changes")
     ap.add_argument("--warmup", type=int, default=1, help="discarded no-daemon runs before measuring")
     args = ap.parse_args()
 
@@ -181,10 +194,13 @@ def main():
     for it in range(args.iterations):
         for key in chosen:
             name, mode, extra = BASELINES[key]
+            old_ra = set_readahead(8192, args.ra_dev) if key == "ra-tuned" else None
             print(f"\n--- iteration {it + 1}/{args.iterations}: {name}")
             results[key].append(run_workload_iteration(
                 mode, duration=args.duration, scale=args.scale, noise=args.noise,
                 workload=args.workload, think_ms=args.think_ms, extra_daemon_args=extra))
+            if old_ra is not None:
+                set_readahead(old_ra, args.ra_dev)
             print(f"    hit={results[key][-1][0]:.2f}% reads={results[key][-1][1]} lat={results[key][-1][2]}")
     print(f"\n{'=' * 60}\nSUMMARY\n{'=' * 60}")
     for key in chosen:
