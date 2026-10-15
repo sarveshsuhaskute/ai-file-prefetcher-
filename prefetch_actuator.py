@@ -23,6 +23,8 @@ class PrecisionTracker:
         self.useful = 0
         self.total = 0
         self.evictions = 0
+        self.precision_ewma = 1.0        # optimistic start; updated per prefetch outcome
+        self.alpha = 0.02
         self._lock = threading.Lock()
 
     def record_prefetch(self, f):
@@ -35,6 +37,18 @@ class PrecisionTracker:
             t = self.prefetches.pop(f, None)
             if t is not None and time.monotonic() - t <= self.window:
                 self.useful += 1
+                self._outcome(1.0)
+
+    def _outcome(self, v):
+        self.precision_ewma += self.alpha * (v - self.precision_ewma)
+
+    def sweep(self):
+        """pop_stale + count each as a wasted prefetch in the running precision estimate."""
+        stale = self.pop_stale()
+        with self._lock:
+            for _ in stale:
+                self._outcome(0.0)
+        return stale
 
     def pop_stale(self):
         """Prefetched but never read within the window: candidates to reclaim."""
@@ -162,7 +176,8 @@ def _fadvise(path, advice, max_bytes=MAX_PREFETCH_BYTES):
 class Actuator:
     def __init__(self, tracker, memory=None, hi=0.5, top_k=2, cooldown=5.0,
                  workers=2, max_queue=256, advise=_fadvise,
-                 max_inflight_mb=0, sizeof=None):
+                 max_inflight_mb=0, sizeof=None,
+                 min_precision=0.0, gate_hi=0.9, sweep_every=0.5):
         self.tracker = tracker
         self.memory = memory or MemoryMonitor()
         self.hi = hi
@@ -176,6 +191,10 @@ class Actuator:
         self.max_inflight = int(max_inflight_mb * 1048576)   # 0 = unlimited
         self._sizeof = sizeof or self._stat_size
         self._sizes = {}
+        self.min_precision = min_precision      # 0 = gate off
+        self.gate_hi = gate_hi
+        self.sweep_every = sweep_every
+        self._next_sweep = 0.0
         self._lock = threading.Lock()
         self._pool = ThreadPoolExecutor(max_workers=workers, thread_name_prefix="fadvise")
         self.stats = {"issued": 0, "throttled_mem": 0, "deduped": 0, "dropped_queue": 0, "dropped_inflight": 0}
@@ -183,8 +202,9 @@ class Actuator:
     def submit(self, predictions):
         """predictions: [(file, confidence)] sorted descending."""
         issued = 0
+        thr = self.threshold()
         for f, conf in predictions:
-            if conf < self.hi or issued >= self.top_k:
+            if conf < thr or issued >= self.top_k:
                 break
             if self.memory.under_pressure():
                 self.stats["throttled_mem"] += 1
@@ -214,6 +234,30 @@ class Actuator:
         if len(self._recent) > 50_000:   # bound the dedupe table
             cutoff = time.monotonic() - self.cooldown
             self._recent = {f: t for f, t in self._recent.items() if t >= cutoff}
+
+    def threshold(self):
+        """Precision-aware gate. Break-even analysis (docs/misprediction_cost.md): a wrong prefetch
+        costs more than a right one saves unless precision is high, so when the recent hit rate of our
+        own prefetches drops below `min_precision`, only the most confident predictions are issued."""
+        if self.min_precision <= 0:
+            return self.hi
+        now = time.monotonic()
+        if now >= self._next_sweep:
+            self._next_sweep = now + self.sweep_every
+            stale = self.tracker.sweep()
+            if stale and self.memory.under_pressure():
+                self._evict_files(stale)
+        if self.tracker.precision_ewma < self.min_precision:
+            self.stats["gated"] = self.stats.get("gated", 0) + 1
+            return max(self.hi, self.gate_hi)
+        return self.hi
+
+    def _evict_files(self, files):
+        for f in files:
+            with self._lock:
+                self._pending += 1
+            self.tracker.evictions += 1
+            self._pool.submit(self._run, f, FADV_DONTNEED)
 
     def reclaim(self):
         """Under pressure, drop pages we prefetched that were never used."""

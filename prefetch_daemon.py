@@ -161,6 +161,10 @@ def main():
                              "(0 = off, default: at 200 it disabled a helpful prefetcher in every experiment)")
     parser.add_argument("--max-inflight-mb", type=float, default=0.0,
                         help="cap on bytes of prefetch queued/in flight (0 = unlimited); bounds tail-latency impact")
+    parser.add_argument("--min-precision", type=float, default=0.0,
+                        help="precision-aware gate: if the recent hit rate of our prefetches falls below this, "
+                             "only issue prefetches with confidence >= --gate-threshold (0 = off)")
+    parser.add_argument("--gate-threshold", type=float, default=0.9)
     parser.add_argument("--psi-threshold", type=float, default=5.0,
                         help="throttle prefetching when memory PSI some-avg10 (%% stalled) >= this")
     parser.add_argument("--low-mem-frac", type=float, default=0.10,
@@ -178,7 +182,8 @@ def main():
                         reclaim_mb_s=0.0 if args.no_mem_aware else args.reclaim_mb_s,
                         low_frac=0.0 if args.no_mem_aware else args.low_mem_frac)
     actuator = Actuator(tracker, memory=mem, hi=args.threshold, top_k=args.top_k,
-                        max_inflight_mb=args.max_inflight_mb)
+                        max_inflight_mb=args.max_inflight_mb,
+                        min_precision=args.min_precision, gate_hi=args.gate_threshold)
 
     if args.mode == "static":
         if not os.path.exists(args.model_path):

@@ -42,6 +42,9 @@ class Ballast:
                     "print('ready', flush=True); time.sleep(10**6)" % gb)
             self.proc = subprocess.Popen([sys.executable, "-c", code], stdout=subprocess.PIPE, text=True)
             self.proc.stdout.readline()
+            with open("/proc/meminfo") as fh:
+                avail = [l.split()[1] for l in fh if l.startswith("MemAvailable")][0]
+            print(f"    [Ballast] holding {gb} GB; MemAvailable now {int(avail) // 1024} MB")
 
     def close(self):
         if self.proc:
@@ -138,6 +141,7 @@ def set_readahead(kb, dev):
 
 
 BASELINES = {
+    "full-gate": ("9. Full AI + precision-aware gate (min precision 0.6)", "full", ("--min-precision", "0.6")),
     "ra-tuned": ("7. No daemon, kernel readahead tuned (read_ahead_kb=8192)", None, ()),
     "full-cap": ("8. Full AI, in-flight prefetch capped at 32 MB", "full", ("--max-inflight-mb", "32")),
     "none": ("1. No Daemon (Default Linux Readahead)", None, ()),

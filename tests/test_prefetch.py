@@ -168,6 +168,30 @@ class ActuatorTests(unittest.TestCase):
         act2.close()
         self.assertEqual(act2.stats["issued"], 6)
 
+    def test_precision_gate_raises_threshold(self):
+        act, calls = self.make(min_precision=0.6, hi=0.5, gate_hi=0.9, sweep_every=0)
+        self.assertEqual(act.threshold(), 0.5)                  # optimistic start: normal threshold
+        act.tracker.precision_ewma = 0.3                         # many recent wrong prefetches
+        self.assertEqual(act.threshold(), 0.9)
+        act.submit([("b", 0.95), ("a", 0.7)])                    # sorted desc: 0.95 passes, 0.7 is blocked
+        act.close()
+        self.assertEqual({p for p, _ in calls}, {"b"})
+        self.assertGreaterEqual(act.stats["gated"], 1)
+
+    def test_sweep_counts_stale_as_misses(self):
+        t = PrecisionTracker(window=0.0)
+        t.record_prefetch("x")
+        time.sleep(0.01)
+        before = t.precision_ewma
+        self.assertEqual(t.sweep(), ["x"])
+        self.assertLess(t.precision_ewma, before)
+
+    def test_gate_off_by_default(self):
+        act, _ = self.make()
+        act.tracker.precision_ewma = 0.0
+        self.assertEqual(act.threshold(), act.hi)
+        act.close()
+
     def test_precision_tracker(self):
         t = PrecisionTracker(window=5)
         t.record_prefetch("a")
