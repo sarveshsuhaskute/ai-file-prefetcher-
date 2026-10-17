@@ -1,10 +1,12 @@
 import os
 import ctypes
 import time
+import argparse
 import multiprocessing
+import random
 import sys
 
-libc = ctypes.CDLL("libc.so.6")
+libc = ctypes.CDLL("libc.so.6" if sys.platform.startswith("linux") else None)  # workload itself needs Linux (mincore/prctl)
 
 def set_comm(name):
     libc.prctl(15, name.encode()[:15], 0, 0, 0)
@@ -21,7 +23,7 @@ def check_incore(fd, size):
     vec = ctypes.create_string_buffer(num_pages)
     libc.mincore.argtypes = [ctypes.c_void_p, ctypes.c_size_t, ctypes.c_char_p]
     libc.mincore(addr, size, vec)
-    resident_pages = sum(1 for i in range(num_pages) if vec[i][0] & 1)
+    resident_pages = vec.raw.count(1)      # mincore bytes are 0/1
     
     libc.munmap.argtypes = [ctypes.c_void_p, ctypes.c_size_t]
     libc.munmap(addr, size)
@@ -31,125 +33,102 @@ def do_read(filepath):
     size = os.path.getsize(filepath)
     fd = os.open(filepath, os.O_RDONLY)
     hit_rate = check_incore(fd, size)
+    t0 = time.perf_counter()
     with os.fdopen(fd, "rb") as f:
         f.read()
-    return hit_rate
+    return hit_rate, (time.perf_counter() - t0) * 1000.0   # (residency, read latency ms)
 
-def worker_builder(duration, stats_queue):
+def counts(scale):
+    """Per-actor working-set sizes (files). scale=1.0 -> 400 files = 4 GB."""
+    return int(100 * scale), int(80 * scale), int(120 * scale)
+
+
+def pick(i, n, noise):
+    """Next file index: the fixed cyclic order, or a random jump with prob `noise`."""
+    return random.randrange(n) if noise and random.random() < noise else i % n
+
+
+def run_actor(name, prefix, n, duration, stats_queue, noise, shift_to=None, think=0.01):
     try:
-        set_comm("builder")
-        start_time = time.time()
-        end = start_time + duration
-        shift_time = start_time + (duration / 2.0)
-        hits = []
-        i = 0
+        set_comm(name)
+        random.seed(os.getpid())
+        start = time.time()
+        end = start + duration
+        shift_time = start + duration / 2.0
+        hits, i = [], 0
         while time.time() < end:
-            current_time = time.time()
-            if current_time < shift_time:
-                f = f"/tmp/builder_{i % 100}.dat"
-            else:
-                f = f"/tmp/builder_{100 + (i % 100)}.dat"
-                
-            bucket = int((current_time - start_time) // 5)
-            hits.append((bucket, do_read(f)))
-            time.sleep(0.01)
+            now = time.time()
+            base = n if (shift_to and now >= shift_time) else 0   # context shift at t/2
+            f = f"/tmp/{prefix}_{base + pick(i, n, noise)}.dat"
+            hr, lat = do_read(f)
+            hits.append((int((now - start) // 5), hr, lat))
+            time.sleep(think)                       # per-file 'processing' time = idle I/O to overlap
             i += 1
-        stats_queue.append(("builder", hits))
+        stats_queue.append((name, hits))
     except BaseException as e:
-        print(f"Builder worker error: {e}")
+        print(f"{name} worker error: {e}")
 
-def worker_tailer(duration, stats_queue):
-    try:
-        set_comm("logger")
-        start_time = time.time()
-        end = start_time + duration
-        hits = []
-        i = 0
-        while time.time() < end:
-            current_time = time.time()
-            f = f"/tmp/tailer_{i % 80}.dat"
-            bucket = int((current_time - start_time) // 5)
-            hits.append((bucket, do_read(f)))
-            time.sleep(0.01)
-            i += 1
-        stats_queue.append(("logger", hits))
-    except BaseException as e:
-        print(f"Tailer worker error: {e}")
 
-def worker_processor(duration, stats_queue):
-    try:
-        set_comm("processor")
-        start_time = time.time()
-        end = start_time + duration
-        hits = []
-        i = 0
-        while time.time() < end:
-            current_time = time.time()
-            f = f"/tmp/processor_{i % 120}.dat"
-            bucket = int((current_time - start_time) // 5)
-            hits.append((bucket, do_read(f)))
-            time.sleep(0.01)
-            i += 1
-        stats_queue.append(("processor", hits))
-    except BaseException as e:
-        print(f"Processor worker error: {e}")
-
-def setup_files():
-    print("Creating 400 test files (4 GB)... This takes ~3 seconds.")
+def setup_files(scale):
+    b, t, p = counts(scale)
+    total = 2 * b + t + p
+    print(f"Creating {total} test files ({total * 10 / 1024:.1f} GB)...")
     chunk = os.urandom(10 * 1024 * 1024)
-    for i in range(200):
-        with open(f"/tmp/builder_{i}.dat", "wb") as out: out.write(chunk)
-    for i in range(80):
-        with open(f"/tmp/tailer_{i}.dat", "wb") as out: out.write(chunk)
-    for i in range(120):
-        with open(f"/tmp/processor_{i}.dat", "wb") as out: out.write(chunk)
+    for prefix, n in (("builder", 2 * b), ("tailer", t), ("processor", p)):
+        for i in range(n):
+            with open(f"/tmp/{prefix}_{i}.dat", "wb") as out:
+                out.write(chunk)
+
 
 def main():
-    if "--setup" in sys.argv:
-        setup_files()
-        sys.exit(0)
-        
-    duration = int(sys.argv[1]) if len(sys.argv) > 1 else 40 
-    
+    ap = argparse.ArgumentParser()
+    ap.add_argument("duration", nargs="?", type=int, default=40)
+    ap.add_argument("--setup", action="store_true", help="create the data files and exit")
+    ap.add_argument("--scale", type=float, default=1.0, help="working-set multiplier (3.5 ~ 14 GB)")
+    ap.add_argument("--noise", type=float, default=0.0, help="probability of a random (unpredictable) access")
+    ap.add_argument("--think-ms", type=float, default=10.0,
+                    help="per-file processing time; large values leave idle I/O a prefetcher can use")
+    args = ap.parse_args()
+    think = args.think_ms / 1000.0
+
+    if args.setup:
+        setup_files(args.scale)
+        return
+
+    b, t, p = counts(args.scale)
     manager = multiprocessing.Manager()
     results = manager.list()
-    
-    p1 = multiprocessing.Process(target=worker_builder, args=(duration, results))
-    p2 = multiprocessing.Process(target=worker_tailer, args=(duration, results))
-    p3 = multiprocessing.Process(target=worker_processor, args=(duration, results))
-    
-    p1.start()
-    p2.start()
-    p3.start()
-    
-    p1.join()
-    p2.join()
-    p3.join()
-    
-    print(f"DEBUG: results has {len(results)} items")
-        
-    bucket_hits = {}
-    bucket_reads = {}
-    
-    for name, hits in results:
-        for bucket, hit_rate in hits:
-            if bucket not in bucket_hits:
-                bucket_hits[bucket] = 0.0
-                bucket_reads[bucket] = 0
-            bucket_hits[bucket] += hit_rate
-            bucket_reads[bucket] += 1
-            
+    procs = [
+        multiprocessing.Process(target=run_actor, args=("builder", "builder", b, args.duration, results, args.noise, True, think)),
+        multiprocessing.Process(target=run_actor, args=("logger", "tailer", t, args.duration, results, args.noise, None, think)),
+        multiprocessing.Process(target=run_actor, args=("processor", "processor", p, args.duration, results, args.noise, None, think)),
+    ]
+    for pr in procs:
+        pr.start()
+    for pr in procs:
+        pr.join()
+
+    bucket_hits, bucket_reads = {}, {}
+    lats = []
+    for _, hits in results:
+        for bucket, hr, lat in hits:
+            lats.append(lat)
+            bucket_hits[bucket] = bucket_hits.get(bucket, 0.0) + hr
+            bucket_reads[bucket] = bucket_reads.get(bucket, 0) + 1
+
     print("--- TIME SERIES HIT RATE ---")
-    buckets = sorted(bucket_hits.keys())
-    for b in buckets:
-        avg = (bucket_hits[b] / bucket_reads[b]) * 100 if bucket_reads[b] else 0
-        print(f"[{b*5}s - {(b+1)*5}s]: {avg:.2f}% (Reads: {bucket_reads[b]})")
-        
-    total_hits = sum(bucket_hits.values())
-    total_reads = sum(bucket_reads.values())
-    overall_avg = (total_hits / total_reads) * 100 if total_reads else 0
+    for bk in sorted(bucket_hits):
+        avg = bucket_hits[bk] / bucket_reads[bk] * 100
+        print(f"[{bk * 5}s - {(bk + 1) * 5}s]: {avg:.2f}% (Reads: {bucket_reads[bk]})")
+    total_hits, total_reads = sum(bucket_hits.values()), sum(bucket_reads.values())
+    overall = total_hits / total_reads * 100 if total_reads else 0
     print(f"RAW DATA -> Total Hits: {total_hits:.1f}, Total Reads: {total_reads}")
-    print(f"Overall Cache Hit Rate: {overall_avg:.2f}% (Total Reads: {total_reads})")
+    print(f"Overall Cache Hit Rate: {overall:.2f}% (Total Reads: {total_reads})")
+    if lats:
+        lats.sort()
+        print(f"Read Latency ms: mean={sum(lats) / len(lats):.2f} p50={lats[len(lats) // 2]:.2f} "
+              f"p95={lats[int(len(lats) * 0.95)]:.2f} p99={lats[int(len(lats) * 0.99)]:.2f}")
+
 
 if __name__ == "__main__":
     main()

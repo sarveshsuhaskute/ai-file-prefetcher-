@@ -7,3 +7,8 @@ prompt next .txt
 knowledge .docx
 MAIN PRES.docx
 final run.docx
+
+# paper drafts and the scripts embedding the paper text stay local until submission
+paper/*.docx
+paper/*.pdf
+paper/build_paper*.js

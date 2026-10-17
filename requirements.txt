@@ -1,0 +1,3 @@
+# Runtime has no PyPI dependencies. eBPF needs the distro bcc package (Ubuntu):
+#   sudo apt install -y bpfcc-tools linux-headers-$(uname -r) python3-bpfcc
+# Tests and the simulator use only the standard library.
