@@ -1,0 +1,29 @@
+$ python3 -m unittest discover -s tests -v
+test_cooldown_dedupes (test_prefetch.ActuatorTests.test_cooldown_dedupes) ... ok
+test_gate_off_by_default (test_prefetch.ActuatorTests.test_gate_off_by_default) ... ok
+test_inflight_byte_cap (test_prefetch.ActuatorTests.test_inflight_byte_cap) ... ok
+test_meminfo_parsing (test_prefetch.ActuatorTests.test_meminfo_parsing) ... ok
+test_precision_gate_raises_threshold (test_prefetch.ActuatorTests.test_precision_gate_raises_threshold) ... ok
+test_precision_tracker (test_prefetch.ActuatorTests.test_precision_tracker) ... ok
+test_prefetches_top_k_above_threshold (test_prefetch.ActuatorTests.test_prefetches_top_k_above_threshold) ... ok
+test_pressure_throttles_and_reclaims (test_prefetch.ActuatorTests.test_pressure_throttles_and_reclaims) ... ok
+test_psi_parsing_and_threshold (test_prefetch.ActuatorTests.test_psi_parsing_and_threshold) ... ok
+test_queue_cap (test_prefetch.ActuatorTests.test_queue_cap) ... ok
+test_reclaim_rate_signal (test_prefetch.ActuatorTests.test_reclaim_rate_signal) ... ok
+test_reclaim_signal_off_by_default (test_prefetch.ActuatorTests.test_reclaim_signal_off_by_default) ... ok
+test_sweep_counts_stale_as_misses (test_prefetch.ActuatorTests.test_sweep_counts_stale_as_misses) ... ok
+test_willneed_is_chunked (test_prefetch.FadviseTests.test_willneed_is_chunked) ... ok
+test_full_mode_uses_context (test_prefetch.ModelTests.test_full_mode_uses_context) ... ok
+test_json_roundtrip (test_prefetch.ModelTests.test_json_roundtrip) ... ok
+test_learns_cycle (test_prefetch.ModelTests.test_learns_cycle) ... ok
+test_pid_table_bounded (test_prefetch.ModelTests.test_pid_table_bounded) ... ok
+test_pids_are_isolated (test_prefetch.ModelTests.test_pids_are_isolated) ... ok
+test_prune_bounds_memory (test_prefetch.ModelTests.test_prune_bounds_memory) ... ok
+test_static_mode_does_not_learn (test_prefetch.ModelTests.test_static_mode_does_not_learn) ... ok
+test_top_k_and_min_conf (test_prefetch.ModelTests.test_top_k_and_min_conf) ... ok
+
+----------------------------------------------------------------------
+Ran 22 tests in 0.031s
+
+OK
+

@@ -1,0 +1,7 @@
+$ sudo python3 workload.py --setup --scale 0.3
+Creating 120 test files (1.2 GB)...
+
+$ ls /tmp/*.dat | wc -l && du -ch /tmp/*.dat | tail -1
+120
+1.2G	total
+

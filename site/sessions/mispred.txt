@@ -1,0 +1,60 @@
+$ sudo systemd-run --scope -q -p IOReadBandwidthMax="/dev/vda 100M" python3 misprediction_cost.py --trials 5 --gaps-ms 0,100,200
+{
+  "file_mb": 10.0,
+  "k_wrong": 2,
+  "trials": 5,
+  "E1_wrong_file_time_to_resident_ms": {
+    "mean": 60.06,
+    "p50": 51.83,
+    "p95": 107.11,
+    "n": 5
+  },
+  "E1_effective_MBps": 166.5,
+  "E2_needed_file_no_prefetch_ms": {
+    "mean": 48.84,
+    "p50": 48.16,
+    "p95": 54.02,
+    "n": 5
+  },
+  "E3_needed_file_prefetched_right_ms": {
+    "mean": 3.8,
+    "p50": 3.65,
+    "p95": 5.68,
+    "n": 5
+  },
+  "E4_needed_file_after_wrong_prefetch_ms": {
+    "gap_0ms": {
+      "mean": 258.63,
+      "p50": 235.55,
+      "p95": 340.38,
+      "n": 5
+    },
+    "gap_100ms": {
+      "mean": 157.06,
+      "p50": 137.68,
+      "p95": 235.45,
+      "n": 5
+    },
+    "gap_200ms": {
+      "mean": 36.03,
+      "p50": 41.07,
+      "p95": 48.84,
+      "n": 5
+    }
+  },
+  "E4_penalty_vs_no_prefetch_ms": {
+    "gap_0ms": {
+      "mean_ms": 209.79,
+      "pct": 429.5
+    },
+    "gap_100ms": {
+      "mean_ms": 108.22,
+      "pct": 221.6
+    },
+    "gap_200ms": {
+      "mean_ms": -12.81,
+      "pct": -26.2
+    }
+  }
+}
+

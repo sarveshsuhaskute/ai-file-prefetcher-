@@ -1,0 +1,41 @@
+$ sudo python3 eval_runner.py --baselines none,full --scale 0.3 --skip-setup --iterations 1 --warmup 0 --duration 15
+[Config] scale=0.3 noise=0.0 duration=15s iterations=1
+
+--- iteration 1/1: 1. No Daemon (Default Linux Readahead)
+    [System] Settling writeback + dropping caches...
+    hit=95.57% reads=2710 lat={'mean': 4.76, 'p50': 4.88, 'p95': 6.35, 'p99': 7.73, 'psi_max': 0.0}
+
+--- iteration 1/1: 4. Full Context-Aware AI
+    [System] Settling writeback + dropping caches...
+    hit=95.40% reads=2607 lat={'mean': 5.34, 'p50': 5.36, 'p95': 6.7, 'p99': 7.59, 'psi_max': 0.0}
+
+============================================================
+SUMMARY
+============================================================
+
+Result: 1. No Daemon (Default Linux Readahead)
+Mean Cache Hit Rate: 95.57% +/- 0.00% (n=1) | reads/run ~2710
+   peak memory PSI some-avg10: [0.0]
+   read latency mean: 4.76 ms
+   read latency p50: 4.88 ms
+   read latency p95: 6.35 ms
+   read latency p99: 7.73 ms
+   runs: ['95.57%']  reads: [2710]
+
+Result: 4. Full Context-Aware AI
+Mean Cache Hit Rate: 95.40% +/- 0.00% (n=1) | reads/run ~2607
+   peak memory PSI some-avg10: [0.0]
+   read latency mean: 5.34 ms
+   read latency p50: 5.36 ms
+   read latency p95: 6.70 ms
+   read latency p99: 7.59 ms
+   runs: ['95.40%']  reads: [2607]
+    [Precision Stats] Useful Prefetches: 302 / 306 (98.7%)
+    [Precision Stats] Total DONTNEED Evictions: 0
+    [Actuator] {'issued': 306, 'throttled_mem': 0, 'deduped': 2188, 'dropped_queue': 0, 'dropped_inflight': 0}
+    [Overhead] Avg model+dispatch time per open event: 74.5 us (2640 events)
+    [Overhead] Max RSS (RAM): 170564 KB
+    [Overhead] CPU Time: User 1.00s, Sys 0.22s
+
+Evaluation Complete.
+

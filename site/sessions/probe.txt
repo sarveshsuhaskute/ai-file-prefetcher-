@@ -1,0 +1,7 @@
+$ sudo python3 willneed_probe.py --trials 5 --out /tmp/probe.json
+posix_fadvise|whole file     resident  12.5%  (min 12.5, max 12.5)
+readahead(2)|whole file      resident  12.5%  (min 12.5, max 12.5)
+posix_fadvise|1 MB chunks    resident 100.0%  (min 100.0, max 100.0)
+readahead(2)|1 MB chunks     resident 100.0%  (min 100.0, max 100.0)
+wrote /tmp/probe.json
+
