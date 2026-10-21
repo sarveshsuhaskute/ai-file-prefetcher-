@@ -38,6 +38,8 @@ class PrecisionTracker:
             if t is not None and time.monotonic() - t <= self.window:
                 self.useful += 1
                 self._outcome(1.0)
+                return time.monotonic() - t
+        return None
 
     def _outcome(self, v):
         self.precision_ewma += self.alpha * (v - self.precision_ewma)
@@ -200,8 +202,9 @@ class Actuator:
         self.stats = {"issued": 0, "throttled_mem": 0, "deduped": 0, "dropped_queue": 0, "dropped_inflight": 0}
 
     def submit(self, predictions):
-        """predictions: [(file, confidence)] sorted descending."""
+        """predictions: [(file, confidence)] sorted descending. Returns [(file, conf, outcome)]."""
         issued = 0
+        decisions = []
         thr = self.threshold()
         for f, conf in predictions:
             if conf < thr or issued >= self.top_k:
@@ -213,6 +216,7 @@ class Actuator:
             now = time.monotonic()
             if now - self._recent.get(f, -1e9) < self.cooldown:
                 self.stats["deduped"] += 1
+                decisions.append((f, conf, "recently prefetched"))
                 continue
             size = self._size(f) if self.max_inflight else 0
             with self._lock:
@@ -231,9 +235,11 @@ class Actuator:
             self._pool.submit(self._run, f, FADV_WILLNEED, size)
             self.stats["issued"] += 1
             issued += 1
+            decisions.append((f, conf, "WILLNEED"))
         if len(self._recent) > 50_000:   # bound the dedupe table
             cutoff = time.monotonic() - self.cooldown
             self._recent = {f: t for f, t in self._recent.items() if t >= cutoff}
+        return decisions
 
     def threshold(self):
         """Precision-aware gate. Break-even analysis (docs/misprediction_cost.md): a wrong prefetch

@@ -169,6 +169,8 @@ def main():
                         help="throttle prefetching when memory PSI some-avg10 (%% stalled) >= this")
     parser.add_argument("--low-mem-frac", type=float, default=0.10,
                         help="fallback (no PSI): throttle when MemAvailable < this fraction of MemTotal")
+    parser.add_argument("--trace", action="store_true",
+                        help="print every traced open, the prediction and the prefetch decision")
     parser.add_argument("--no-mem-aware", action="store_true",
                         help="disable memory-pressure throttling")
     args = parser.parse_args()
@@ -208,12 +210,21 @@ def main():
             comm = ev.comm.decode("utf-8", "replace")
             bucket = datetime.datetime.now().hour // 6
             model.process_access(ev.pid, comm, bucket, filename)
+            decisions = []
             if args.mode != "train":
-                actuator.submit(model.predict_next(ev.pid, comm, bucket, top_k=args.top_k * 2))
+                decisions = actuator.submit(model.predict_next(ev.pid, comm, bucket, top_k=args.top_k * 2))
+            if args.trace:
+                ts = datetime.datetime.now().strftime("%H:%M:%S.%f")[:-3]
+                acts = "  ".join(f"{os.path.basename(f)} {c:.2f} -> {o}" for f, c, o in decisions) or "(learning)"
+                print(f"{ts} open pid={ev.pid:<6} {comm:<10} {os.path.basename(filename):<20} | {acts}", flush=True)
             counters["events"] += 1
             counters["predict_s"] += time.perf_counter() - t0
         elif ev.type == EV_READ:
-            tracker.record_read(filename)
+            age = tracker.record_read(filename)
+            if args.trace and age is not None:
+                ts = datetime.datetime.now().strftime("%H:%M:%S.%f")[:-3]
+                print(f"{ts} read pid={ev.pid:<6} {ev.comm.decode('utf-8', 'replace'):<10} "
+                      f"{os.path.basename(filename):<20} | hit: prefetched {1000 * age:.0f} ms earlier", flush=True)
 
     b["events"].open_ring_buffer(handle_event)
 
