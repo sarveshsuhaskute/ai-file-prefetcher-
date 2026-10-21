@@ -12,3 +12,8 @@ final run.docx
 paper/*.docx
 paper/*.pdf
 paper/build_paper*.js
+
+# npm install for the local paper builder
+node_modules/
+package.json
+package-lock.json
