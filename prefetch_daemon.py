@@ -8,6 +8,7 @@ import sys
 import time
 
 from prefetch_actuator import Actuator, MemoryMonitor, PrecisionTracker
+from prefetch_policies import DeadFileEvictor, IOPressureController
 from prefetch_model import PrefetchModel
 
 bpf_source = r"""
@@ -46,11 +47,14 @@ static inline bool filter_noise(const char *filename) {
         char c = filename[i];
         if (c == '\0') break;
         if (c != '.' && c != '/') continue;
+#ifndef KEEP_LIBS
         // shared libs / bytecode: ".so" or ".so.N" / ".pyc" at a name boundary
+        // (kept with --include-libs: for application start-up these opens ARE the workload)
         if (c == '.' && filename[i+1] == 's' && filename[i+2] == 'o' &&
             (filename[i+3] == '\0' || filename[i+3] == '.')) return true;
         if (c == '.' && filename[i+1] == 'p' && filename[i+2] == 'y' && filename[i+3] == 'c' &&
             filename[i+4] == '\0') return true;
+#endif
         // path components only: "/.cache/" and "/locale/"
         if (c == '/' && filename[i+1] == '.' && filename[i+2] == 'c' && filename[i+3] == 'a' &&
             filename[i+4] == 'c' && filename[i+5] == 'h' && filename[i+6] == 'e' && filename[i+7] == '/') return true;
@@ -169,6 +173,12 @@ def main():
                         help="throttle prefetching when memory PSI some-avg10 (%% stalled) >= this")
     parser.add_argument("--low-mem-frac", type=float, default=0.10,
                         help="fallback (no PSI): throttle when MemAvailable < this fraction of MemTotal")
+    parser.add_argument("--adaptive-io", type=float, default=0.0,
+                        help="adapt prefetch bytes in flight to I/O pressure: target stall fraction, e.g. 0.3 (0 = off)")
+    parser.add_argument("--evict-dead", action="store_true",
+                        help="drop a file after use when its reuse distance exceeds the page cache")
+    parser.add_argument("--include-libs", action="store_true",
+                        help="also trace .so and .pyc opens (needed for application start-up workloads)")
     parser.add_argument("--trace", action="store_true",
                         help="print every traced open, the prediction and the prefetch decision")
     parser.add_argument("--no-mem-aware", action="store_true",
@@ -186,6 +196,8 @@ def main():
     actuator = Actuator(tracker, memory=mem, hi=args.threshold, top_k=args.top_k,
                         max_inflight_mb=args.max_inflight_mb,
                         min_precision=args.min_precision, gate_hi=args.gate_threshold)
+    ioctl = IOPressureController(target=args.adaptive_io) if args.adaptive_io > 0 else None
+    evictor = DeadFileEvictor() if args.evict_dead else None
 
     if args.mode == "static":
         if not os.path.exists(args.model_path):
@@ -194,7 +206,7 @@ def main():
 
     my_pid = os.getpid()
     print(f"Daemon PID: {my_pid}")
-    b = BPF(text=bpf_source, cflags=[f"-DDAEMON_PID={my_pid}"])
+    b = BPF(text=bpf_source, cflags=[f"-DDAEMON_PID={my_pid}"] + (["-DKEEP_LIBS"] if args.include_libs else []))
     b.attach_tracepoint(tp="syscalls:sys_enter_openat", fn_name="trace_enter_openat")
     b.attach_tracepoint(tp="syscalls:sys_exit_openat", fn_name="trace_exit_openat")
     b.attach_tracepoint(tp="syscalls:sys_enter_read", fn_name="trace_enter_read")
@@ -210,6 +222,10 @@ def main():
             comm = ev.comm.decode("utf-8", "replace")
             bucket = datetime.datetime.now().hour // 6
             model.process_access(ev.pid, comm, bucket, filename)
+            if evictor is not None:
+                evictor.on_open(filename)
+            if ioctl is not None:
+                actuator.max_inflight = ioctl.limit()
             decisions = []
             if args.mode != "train":
                 decisions = actuator.submit(model.predict_next(ev.pid, comm, bucket, top_k=args.top_k * 2))
@@ -219,6 +235,14 @@ def main():
                 print(f"{ts} open pid={ev.pid:<6} {comm:<10} {os.path.basename(filename):<20} | {acts}", flush=True)
             counters["events"] += 1
             counters["predict_s"] += time.perf_counter() - t0
+        elif ev.type == EV_CLOSE and evictor is not None:
+            if filename not in tracker.prefetches and evictor.is_dead(filename):
+                actuator._evict_files([filename])
+                evictor.evicted += 1
+                if args.trace:
+                    ts = datetime.datetime.now().strftime("%H:%M:%S.%f")[:-3]
+                    print(f"{ts} close pid={ev.pid:<6} {ev.comm.decode('utf-8', 'replace'):<10} "
+                          f"{os.path.basename(filename):<20} | DONTNEED: reuse distance exceeds cache", flush=True)
         elif ev.type == EV_READ:
             age = tracker.record_read(filename)
             if args.trace and age is not None:
@@ -254,6 +278,10 @@ def main():
     if args.mode != "train":
         tracker.print_stats()
     print(f"[Actuator] {actuator.stats}")
+    if ioctl is not None:
+        print(f"[Adaptive I/O] {ioctl.summary()}")
+    if evictor is not None:
+        print(f"[Dead-file eviction] evicted {evictor.evicted} files after use")
     ev_n = max(counters["events"], 1)
     print(f"[Overhead] Avg model+dispatch time per open event: {1e6 * counters['predict_s'] / ev_n:.1f} us "
           f"({counters['events']} events)")

@@ -1,0 +1,20 @@
+# Second test configuration: 2 vCPU, 4 GB RAM (limactl start --name prefetch-small ebpf-small.yaml).
+# The 4 GB working set does not fit in its page cache, so memory pressure is natural (no ballast).
+images:
+  - location: "https://cloud-images.ubuntu.com/releases/24.04/release/ubuntu-24.04-server-cloudimg-arm64.img"
+    arch: "aarch64"
+  - location: "https://cloud-images.ubuntu.com/releases/24.04/release/ubuntu-24.04-server-cloudimg-amd64.img"
+    arch: "x86_64"
+cpus: 2
+memory: "4GiB"
+disk: "30GiB"
+mounts:
+  - location: "~/Downloads/OS PROJECT"
+    writable: true
+provision:
+  - mode: system
+    script: |
+      apt-get update
+      apt-get install -y clang llvm libelf-dev libbpf-dev \
+        linux-tools-common linux-tools-generic linux-tools-$(uname -r) \
+        bpftrace python3-bpfcc bpfcc-tools build-essential git
