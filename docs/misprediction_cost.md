@@ -45,7 +45,7 @@ precision under 30% noise did not net-win on tails.
 |---|---|---|---|
 | 14 GB + ballast, predictable | 4910 | 99.8% | 0.2% |
 | Same, 30% noise | 4186 | 46.2% | **53.8%** (~2250 x 10 MB = up to ~22 GB of speculative reads in 40 s) |
-| Slow disk 400 MB/s, think 100 ms | 1924 | 99.3% | 0.7% |
+| Slow disk 400 MB/s, think ~10 ms | 1924 | 99.3% | 0.7% |
 
 "Useful" means read within 2 s, so late-but-eventually-used prefetches count as wrong: the real waste is somewhat lower.
 Note the slow-disk row: with only 0.7% wrong prefetches p99 latency was still ~3x worse, so **tail damage there comes from correct

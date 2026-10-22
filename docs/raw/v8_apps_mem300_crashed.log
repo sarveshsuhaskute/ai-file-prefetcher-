@@ -1,0 +1,15 @@
+[Config] scale=1.0 noise=0.0 duration=60s iterations=5
+
+--- warm-up 1/1 (discarded)
+    [System] Settling writeback + dropping caches...
+
+--- iteration 1/5: 1. No Daemon (Default Linux Readahead)
+    [System] Settling writeback + dropping caches...
+    hit=nan% reads=1850 lat={'apps': {'compile': {'ops': 5.0, 'mean': 12382.8, 'p50': 12261.1, 'p95': 13379.3}, 'python': {'ops': 939.0, 'mean': 64.0, 'p50': 61.2, 'p95': 78.7}, 'search': {'ops': 906.0, 'mean': 66.3, 'p50': 64.4, 'p95': 75.4}}, 'mean': 98.38, 'p50': 63.29, 'p95': 78.56, 'p99': 122.9, 'psi_max': 0.0}
+
+--- iteration 1/5: 4. Full Context-Aware AI
+    [System] Settling writeback + dropping caches...
+    hit=nan% reads=1119 lat={'apps': {'compile': {'ops': 4.0, 'mean': 15220.7, 'p50': 15195.1, 'p95': 16481.0}, 'python': {'ops': 676.0, 'mean': 88.8, 'p50': 87.1, 'p95': 110.2}, 'search': {'ops': 439.0, 'mean': 136.7, 'p50': 145.6, 'p95': 174.3}}, 'mean': 161.65, 'p50': 93.67, 'p95': 164.02, 'p99': 195.04, 'psi_max': 1.98}
+
+--- iteration 1/5: 11. Full AI + dead-file eviction
+    [System] Settling writeback + dropping caches...

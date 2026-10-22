@@ -34,7 +34,9 @@ The throttled daemon issued 6 prefetches and rejected 4131, so it is identical t
 Gain shrinks: residency +12 points, p50 -11%, throughput +1.7%, but mean latency is unchanged and **tail latency is ~15% worse**
 (wrong guesses cost disk bandwidth).
 
-### C. Slow disk (400 MB/s cgroup cap), 100 ms think time per file, 9 GB ballast (4 iterations, 60 s)
+### C. Slow disk (400 MB/s cgroup cap), ~10 ms think time per file, 9 GB ballast (4 iterations, 60 s)
+Correction: this run was meant to use 100 ms of think time, but the harness did not pass `--think-ms` to the workload,
+so it used the 10 ms default (confirmed by the logged per-iteration times). The 100 ms experiment is rerun in v8.
 | Baseline | Hit rate | Reads/run | Latency mean / p50 / p95 / p99 (ms) |
 |---|---|---|---|
 | No daemon | 1.1% ± 0.2 | 2319 | 65.8 / 79.5 / 94.4 / 97.8 |

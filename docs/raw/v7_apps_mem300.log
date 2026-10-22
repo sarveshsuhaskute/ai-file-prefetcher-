@@ -1,0 +1,81 @@
+[Config] scale=1.0 noise=0.0 duration=60s iterations=5
+
+--- warm-up 1/1 (discarded)
+    [System] Settling writeback + dropping caches...
+
+--- iteration 1/5: 1. No Daemon (Default Linux Readahead)
+    [System] Settling writeback + dropping caches...
+    hit=nan% reads=2001 lat={'apps': {'compile': {'ops': 6.0, 'mean': 11207.9, 'p50': 11301.3, 'p95': 11696.5}, 'python': {'ops': 1047.0, 'mean': 57.3, 'p50': 56.4, 'p95': 64.1}, 'search': {'ops': 948.0, 'mean': 63.3, 'p50': 62.7, 'p95': 68.8}}, 'mean': 93.6, 'p50': 60.27, 'p95': 67.58, 'p99': 72.24, 'psi_max': 0.0}
+
+--- iteration 1/5: 4. Full Context-Aware AI
+    [System] Settling writeback + dropping caches...
+    hit=nan% reads=1147 lat={'apps': {'compile': {'ops': 5.0, 'mean': 14281.4, 'p50': 15056.8, 'p95': 15401.6}, 'python': {'ops': 693.0, 'mean': 86.6, 'p50': 86.7, 'p95': 107.1}, 'search': {'ops': 449.0, 'mean': 133.9, 'p50': 143.6, 'p95': 179.2}}, 'mean': 166.99, 'p50': 92.23, 'p95': 166.58, 'p99': 194.16, 'psi_max': 1.93}
+
+--- iteration 2/5: 1. No Daemon (Default Linux Readahead)
+    [System] Settling writeback + dropping caches...
+    hit=nan% reads=1936 lat={'apps': {'compile': {'ops': 6.0, 'mean': 11544.9, 'p50': 11698.9, 'p95': 11814.2}, 'python': {'ops': 1005.0, 'mean': 59.8, 'p50': 58.3, 'p95': 68.7}, 'search': {'ops': 925.0, 'mean': 64.9, 'p50': 63.9, 'p95': 70.8}}, 'mean': 97.82, 'p50': 62.24, 'p95': 70.32, 'p99': 82.63, 'psi_max': 0.47}
+
+--- iteration 2/5: 4. Full Context-Aware AI
+    [System] Settling writeback + dropping caches...
+    hit=nan% reads=1199 lat={'apps': {'compile': {'ops': 5.0, 'mean': 13897.2, 'p50': 14075.1, 'p95': 15097.0}, 'python': {'ops': 726.0, 'mean': 82.7, 'p50': 81.6, 'p95': 99.7}, 'search': {'ops': 468.0, 'mean': 128.3, 'p50': 140.8, 'p95': 160.2}}, 'mean': 158.1, 'p50': 87.3, 'p95': 153.53, 'p99': 173.05, 'psi_max': 1.93}
+
+--- iteration 3/5: 1. No Daemon (Default Linux Readahead)
+    [System] Settling writeback + dropping caches...
+    hit=nan% reads=1922 lat={'apps': {'compile': {'ops': 6.0, 'mean': 11679.1, 'p50': 11842.4, 'p95': 12289.9}, 'python': {'ops': 992.0, 'mean': 60.5, 'p50': 58.7, 'p95': 70.3}, 'search': {'ops': 924.0, 'mean': 64.9, 'p50': 63.9, 'p95': 71.4}}, 'mean': 98.92, 'p50': 62.33, 'p95': 71.12, 'p99': 88.93, 'psi_max': 0.53}
+
+--- iteration 3/5: 4. Full Context-Aware AI
+    [System] Settling writeback + dropping caches...
+    hit=nan% reads=1162 lat={'apps': {'compile': {'ops': 5.0, 'mean': 14078.4, 'p50': 14721.9, 'p95': 15160.3}, 'python': {'ops': 710.0, 'mean': 84.5, 'p50': 83.8, 'p95': 102.2}, 'search': {'ops': 447.0, 'mean': 134.2, 'p50': 141.2, 'p95': 162.0}}, 'mean': 163.87, 'p50': 90.12, 'p95': 156.11, 'p99': 170.82, 'psi_max': 1.99}
+
+--- iteration 4/5: 1. No Daemon (Default Linux Readahead)
+    [System] Settling writeback + dropping caches...
+    hit=nan% reads=1970 lat={'apps': {'compile': {'ops': 6.0, 'mean': 11605.4, 'p50': 11656.0, 'p95': 12109.1}, 'python': {'ops': 1024.0, 'mean': 58.6, 'p50': 56.4, 'p95': 72.0}, 'search': {'ops': 940.0, 'mean': 63.9, 'p50': 62.3, 'p95': 73.7}}, 'mean': 96.3, 'p50': 60.46, 'p95': 73.39, 'p99': 88.48, 'psi_max': 0.49}
+
+--- iteration 4/5: 4. Full Context-Aware AI
+    [System] Settling writeback + dropping caches...
+    hit=nan% reads=1188 lat={'apps': {'compile': {'ops': 5.0, 'mean': 13969.2, 'p50': 14670.1, 'p95': 14850.1}, 'python': {'ops': 721.0, 'mean': 83.3, 'p50': 82.2, 'p95': 99.5}, 'search': {'ops': 462.0, 'mean': 130.0, 'p50': 139.6, 'p95': 159.8}}, 'mean': 159.89, 'p50': 88.72, 'p95': 153.36, 'p99': 165.83, 'psi_max': 1.99}
+
+--- iteration 5/5: 1. No Daemon (Default Linux Readahead)
+    [System] Settling writeback + dropping caches...
+    hit=nan% reads=2046 lat={'apps': {'compile': {'ops': 6.0, 'mean': 11057.6, 'p50': 11129.9, 'p95': 11393.0}, 'python': {'ops': 1059.0, 'mean': 56.7, 'p50': 56.0, 'p95': 61.6}, 'search': {'ops': 981.0, 'mean': 61.2, 'p50': 60.7, 'p95': 65.1}}, 'mean': 91.12, 'p50': 58.98, 'p95': 64.39, 'p99': 71.21, 'psi_max': 0.54}
+
+--- iteration 5/5: 4. Full Context-Aware AI
+    [System] Settling writeback + dropping caches...
+    hit=nan% reads=1133 lat={'apps': {'compile': {'ops': 5.0, 'mean': 14110.0, 'p50': 15204.1, 'p95': 15426.8}, 'python': {'ops': 697.0, 'mean': 86.2, 'p50': 85.3, 'p95': 105.1}, 'search': {'ops': 431.0, 'mean': 139.3, 'p50': 147.7, 'p95': 168.9}}, 'mean': 168.3, 'p50': 93.01, 'p95': 162.56, 'p99': 182.69, 'psi_max': 1.98}
+
+============================================================
+SUMMARY
+============================================================
+
+Result: 1. No Daemon (Default Linux Readahead)
+Mean Cache Hit Rate: n/a (n=5) | ops/run ~1975
+   [apps] compile: ops/run 6.0 | mean 11419.0 ms +/- 270.8 | p50 11525.7 ms | p95 11860.5 ms | per-run means [11207.9, 11544.9, 11679.1, 11605.4, 11057.6]
+   [apps] python: ops/run 1025.4 | mean 58.6 ms +/- 1.6 | p50 57.2 ms | p95 67.3 ms | per-run means [57.3, 59.8, 60.5, 58.6, 56.7]
+   [apps] search: ops/run 943.6 | mean 63.6 ms +/- 1.5 | p50 62.7 ms | p95 70.0 ms | per-run means [63.3, 64.9, 64.9, 63.9, 61.2]
+   peak memory PSI some-avg10: [0.0, 0.5, 0.5, 0.5, 0.5]
+   read latency mean: 95.55 ms
+   read latency p50: 60.86 ms
+   read latency p95: 69.36 ms
+   read latency p99: 80.70 ms
+   runs: ['nan%', 'nan%', 'nan%', 'nan%', 'nan%']  reads: [2001, 1936, 1922, 1970, 2046]
+
+Result: 4. Full Context-Aware AI
+Mean Cache Hit Rate: n/a (n=5) | ops/run ~1166
+   [apps] compile: ops/run 5.0 | mean 14067.2 ms +/- 146.9 | p50 14745.6 ms | p95 15187.2 ms | per-run means [14281.4, 13897.2, 14078.4, 13969.2, 14110.0]
+   [apps] python: ops/run 709.4 | mean 84.7 ms +/- 1.7 | p50 83.9 ms | p95 102.7 ms | per-run means [86.6, 82.7, 84.5, 83.3, 86.2]
+   [apps] search: ops/run 451.4 | mean 133.1 ms +/- 4.3 | p50 142.6 ms | p95 166.0 ms | per-run means [133.9, 128.3, 134.2, 130.0, 139.3]
+   peak memory PSI some-avg10: [1.9, 1.9, 2.0, 2.0, 2.0]
+   read latency mean: 163.43 ms
+   read latency p50: 90.28 ms
+   read latency p95: 158.43 ms
+   read latency p99: 177.31 ms
+   runs: ['nan%', 'nan%', 'nan%', 'nan%', 'nan%']  reads: [1147, 1199, 1162, 1188, 1133]
+    [Interval Stats at t=60s] Max RSS: 181064 KB, Tree Size/Active Sequences: 138778, Actuator: {'issued': 36100, 'throttled_mem': 0, 'deduped': 927505, 'dropped_queue': 258, 'dropped_inflight': 0}
+    [Precision Stats] Useful Prefetches: 35699 / 38337 (93.1%)
+    [Precision Stats] Total DONTNEED Evictions: 0
+    [Actuator] {'issued': 38337, 'throttled_mem': 0, 'deduped': 989413, 'dropped_queue': 258, 'dropped_inflight': 0}
+    [Overhead] Avg model+dispatch time per open event: 45.1 us (1008709 events)
+    [Overhead] Max RSS (RAM): 202180 KB
+    [Overhead] CPU Time: User 51.10s, Sys 4.15s
+
+Evaluation Complete.

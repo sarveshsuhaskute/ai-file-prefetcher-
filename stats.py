@@ -135,7 +135,8 @@ def table(rows):
 
 
 def main():
-    paths = sys.argv[1:] or sorted(glob.glob("docs/raw/v[3678]_*.log") + glob.glob("docs/raw/vm2_*.log"))
+    paths = sys.argv[1:] or sorted(p for p in glob.glob("docs/raw/v[3678]_*.log") + glob.glob("docs/raw/vm2_*.log")
+                                   if "crashed" not in p)    # partial runs killed by the OOM killer
     print("# Significance tests\n")
     print("Each row compares a configuration with No Daemon on per-run values. Difference = (config - no daemon) / no daemon. "
           "95% CI and p-value from Welch's t-test (unequal variances). For time and latency, negative is better. "

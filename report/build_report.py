@@ -16,12 +16,28 @@ from logparse import parse_summary, pct   # noqa: E402
 RAW = os.path.join(ROOT, "docs", "raw")
 P_PRESS = parse_summary(f"{RAW}/v3_synthetic_14GB_ballast4GB_chunked_willneed.log")
 P_NOISE = parse_summary(f"{RAW}/v3_synthetic_noise30_ballast4GB_chunked_willneed.log")
-P_SLOW = parse_summary(f"{RAW}/v3_slowdisk400MBs_think100ms_ballast9GB_chunked_willneed.log")
+P_SLOW = parse_summary(f"{RAW}/v3_slowdisk400MBs_think10ms_ballast9GB_chunked_willneed.log")
 P_PRE = parse_summary(f"{RAW}/synthetic_14GB_ballast4GB.log")
 P_REAL = parse_summary(f"{RAW}/realdata_ballast10.2GB.log")
 V6_PRESS = parse_summary(f"{RAW}/v6_pressure.log") if os.path.exists(f"{RAW}/v6_pressure.log") else {}
 V6_NOISE = parse_summary(f"{RAW}/v6_noise.log") if os.path.exists(f"{RAW}/v6_noise.log") else {}
 MC = {k: json.load(open(f"{RAW}/misprediction_{k}.json")) for k in ("uncapped", "cap400", "cap100")}
+# significance tests, real-application times and daemon costs, collected by paper/collect_data.py
+DATA = json.load(open(os.path.join(ROOT, "paper", "data.json")))
+SG, AP, CO = DATA.get("sig", {}), DATA.get("apps", {}), DATA.get("cost", {})
+S100, S10 = DATA.get("v8_slow100", {}), DATA.get("v8_slow10", {})
+
+
+def sig(log, cfg, metric, tag="vs_none"):
+    return SG.get(log, {}).get(tag, {}).get(cfg, {}).get(metric)
+
+
+def fp(p):
+    return "p < 0.001" if p < 0.001 else f"p = {p:.3f}"
+
+
+def ci(r):
+    return f"{r[0]:+.0f}% (95% CI {r[1]:+.0f}% to {r[2]:+.0f}%, {fp(r[3])})" if r else "n/a"
 
 
 def row(label, d, extra=""):
@@ -198,6 +214,9 @@ d.heading("5.2 Workloads", 2)
 d.bullet("**Synthetic cyclic:** three concurrent actors read 10 MB files in a fixed cyclic order (100, 80 and 120 files at scale 1; 3.5 times "
          "that at scale 3.5, about 14 GB in total). One actor switches to a new file set halfway to test adaptation. An optional noise "
          "parameter replaces a fraction of accesses with random files, and an optional think time sleeps between files.")
+d.bullet("**Real applications:** three real programs on the PostgreSQL source tree, each repeating one task: a build of two of its libraries "
+         "(`make` of `src/port` and `src/common`), a search (`grep -rn` and `git grep` over `src/backend`), and a Python start-up importing "
+         "twenty standard-library modules. The metric is time per operation (`realapps.py`).")
 d.bullet("**Real data:** three actors walk `/usr/share` and `/usr/lib` in directory order and a third follows real `#include` chains "
          "through the C headers in `/usr/include`.")
 d.heading("5.3 Memory pressure", 2)
@@ -209,6 +228,9 @@ d.bullet("**Throughput:** file reads completed in a fixed time (40 or 60 seconds
 d.bullet("**Latency:** time to open and read each file, reported as mean, median (p50), p95 and p99.")
 d.bullet("**Precision:** the share of prefetched files that were read within two seconds. This is the daemon's own estimate and is *not* "
          "evidence that pages are resident (see Section 6.1).")
+d.bullet("**Statistics:** each configuration is compared with no daemon using per-run values. The report gives the difference of means "
+         "with a 95% confidence interval and the p-value of a two-sided Welch's t-test (`stats.py`). With four or five runs, a difference "
+         "is treated as real only when p < 0.05. The full tables are in `docs/statistics.md`.")
 d.heading("5.5 Removing bias from the harness", 2)
 d.para("The first evaluation produced results that later proved unreliable. The harness now does the following before every run:")
 d.bullet("flushes data and waits for writeback to finish before dropping the page cache, because dirty pages from creating 14 GB of test files "
@@ -252,15 +274,25 @@ d.para(
     f"{pct(q['5']['reads'], q['1']['reads']):+.1f}% and the p95 and p99 latencies were worse. Only about "
     f"{100 * q['5']['useful'] / q['5']['issued']:.0f}% of prefetches were used, so more than half of the speculative reads were wasted and "
     f"competed with real reads.")
+s0 = P_SLOW
 d.heading("6.4 Bandwidth-limited disk with think time", 2)
-s = P_SLOW
-d.para("The disk was capped at 400 MB/s, each file was followed by 100 ms of think time (idle time in which prefetching could overlap), and "
-       "a 9 GB ballast was used. Four runs per configuration:")
-d.table([HDR, row("No daemon", s["1"]), row("Daemon, throttle on", s["4"], pf(s["4"])), row("Daemon, no throttle", s["5"], pf(s["5"]))], W7)
+d.para("The disk was capped at 400 MB/s and a 9 GB ballast left about 2.5 GB of cache for a 4 GB working set. This experiment was first "
+       "reported as using 100 ms of think time after each file, but the harness did not pass that setting to the workload, so it actually used "
+       "the 10 ms default. The bug was fixed and both settings were measured again, four runs per configuration:")
+d.table([HDR, row("100 ms think, no daemon", S100["1"]), row("100 ms think, daemon", S100["4"], pf(S100["4"])),
+         row("100 ms think, adaptive limit", S100["10"], pf(S100["10"])), row("10 ms think, no daemon", S10["1"]),
+         row("10 ms think, daemon", S10["4"], pf(S10["4"])), row("10 ms think, adaptive limit", S10["10"], pf(S10["10"]))], W7)
 d.para(
-    f"Prefetching raised the hit rate from {s['1']['hit']:.1f}% to {s['5']['hit']:.1f}% and reads by {pct(s['5']['reads'], s['1']['reads']):.1f}%, "
-    f"and lowered the median latency, but the p99 latency rose from {s['1']['p99']:.0f} ms to {s['5']['p99']:.0f} ms. With about 99% of prefetches "
-    f"useful, wrong guesses cannot explain this. The prefetch reads themselves queue ahead of demand reads on the limited disk.")
+    f"With 100 ms of think time the hit rate rose from {S100['1']['hit']:.1f}% to {S100['4']['hit']:.1f}%, but throughput changed by "
+    f"{ci(sig('v8_slowdisk_think100', '4', 'throughput (per run)'))} and p99 latency by {ci(sig('v8_slowdisk_think100', '4', 'p99 latency'))}: "
+    "neither is significant. Most of each step is think time, so faster reads hardly change the rate, and the disk is idle often enough "
+    "to absorb the prefetches.")
+d.para(
+    f"With 10 ms of think time the median latency changed by {ci(sig('v8_slowdisk_think10', '4', 'median latency'))}, but the p99 latency rose "
+    f"from {S10['1']['p99']:.0f} ms to {S10['4']['p99']:.0f} ms, {ci(sig('v8_slowdisk_think10', '4', 'p99 latency'))}. With "
+    f"{100 * S10['4']['useful'] / S10['4']['issued']:.1f}% of prefetches useful, wrong guesses cannot explain this: the prefetch reads "
+    f"themselves queue ahead of demand reads on the limited disk. The original run showed the same pattern (p99 from {s0['1']['p99']:.0f} ms "
+    f"to {s0['5']['p99']:.0f} ms). The adaptive limit rows are discussed in Section 6.9.")
 d.heading("6.5 The cost of a wrong prediction", 2)
 d.para("To measure the cost directly, `misprediction_cost.py` prefetches two wrong 10 MB files and then reads the file the program actually "
        "needs, after a gap that stands for the program's think time. It uses the daemon's own prefetch routine and 20 trials per cell.")
@@ -304,6 +336,95 @@ if V6_PRESS or V6_NOISE:
             d.table([HD2] + [[v["name"].split(". ", 1)[1], f"{v['hit']:.1f}% ± {v['sd']:.1f}", str(v["reads"]), f"{v['p50']:.1f}",
                               f"{v['p95']:.1f}", f"{v['p99']:.1f}", str(v["n"])] for k, v in sorted(V.items())], [3000, 1300, 1000, 800, 800, 800, 500])
 
+d.heading("6.8 Real applications", 2)
+ac = CO.get("v7_apps_mem300", {}).get("4", {})
+d.para("The three real programs ran together for 60 seconds per run, five runs per configuration, with no memory limit and inside a cgroup "
+       "limited to 400 MB and 300 MB. The cgroup holds both the programs and the daemon, so the daemon's own memory counts against the "
+       "limit. For this workload the daemon also traced shared libraries and Python bytecode (`--include-libs`), since for a program "
+       "start-up those opens are the workload. Mean time per operation:")
+rows = [["Memory limit, configuration", "Build (s)", "Python start-up (ms)", "Search (ms)"]]
+for lab, k in (("No limit", "unlimited"), ("400 MB", "mem400"), ("300 MB", "mem300")):
+    for cfg, name in (("1", "no daemon"), ("4", "daemon")):
+        a = AP[k][cfg]
+        rows.append([f"{lab}, {name}", f"{a['compile'] / 1000:.2f}", f"{a['python']:.1f}", f"{a['search']:.1f}"])
+d.table(rows, [3200, 1500, 2000, 1500])
+d.para("Change in time per operation with the daemon, relative to no daemon:")
+rows = [["Memory limit", "Build", "Python start-up", "Search"]]
+for lab, k in (("No limit", "v7_apps_unlimited"), ("400 MB", "v7_apps_mem400"), ("300 MB", "v7_apps_mem300")):
+    rows.append([lab] + [f"{r[0]:+.0f}% ({fp(r[3])})" for r in (sig(k, "4", f"{a} time per op") for a in ("compile", "python", "search"))])
+d.table(rows, [2000, 2000, 2000, 2000])
+d.para(
+    f"The daemon made every program slower, and the slowdown grew as the limit shrank. Prediction was accurate "
+    f"({100 * ac['useful'] / ac['issued']:.0f}% of prefetches were read), but there was nothing to gain: without the daemon the build time "
+    f"barely changed between no limit and 300 MB ({AP['unlimited']['1']['compile'] / 1000:.2f} s and {AP['mem300']['1']['compile'] / 1000:.2f} s), "
+    f"so the programs' files stayed cached. What was left was cost. In one 60-second run at 300 MB the daemon handled "
+    f"{ac['events'] / 1e6:.1f} million open events at {ac['us_per_event']:.0f} microseconds each, used {ac['cpu_user'] + ac['cpu_sys']:.0f} "
+    f"seconds of CPU time (almost one of the four cores) and held {ac['rss_kb'] / 1024:.0f} MB of memory inside the same limit. In the "
+    "synthetic tests each open is followed by 10 MB of disk reads, so a few tens of microseconds per open do not matter; here each open is "
+    "followed by a few kilobytes that are already in memory, and the same cost dominates.")
+
+P8 = DATA.get("v8_pressure", {})
+if P8:
+    ev, ad, ad10 = CO["v8_pressure"].get("11", {}), CO["v8_pressure"].get("10", {}), CO["v8_slowdisk_think10"].get("10", {})
+    d.heading("6.9 Prediction-driven eviction and an adaptive I/O limit", 2)
+    d.para("Two optional policies were added to address the costs found above.")
+    d.bullet("**Dead-file eviction (`--evict-dead`).** Under LRU, a file whose reuse distance is larger than the cache is evicted before it is "
+             "used again, so keeping it after use only pushes out other data. The daemon estimates each file's reuse distance as the number of "
+             "opens between successive opens of that file (an exponentially weighted average) times the mean file size. When a file is closed, "
+             "was not itself just prefetched, and its reuse distance exceeds the page cache available to the process, the daemon drops it with "
+             "`POSIX_FADV_DONTNEED`. This is the eviction half of the original design.")
+    d.bullet("**Adaptive I/O limit (`--adaptive-io 0.3`).** Every 250 ms the daemon reads the I/O stall time from `/proc/pressure/io`, works out "
+             "what fraction of the time tasks were waiting for I/O, and adjusts how many prefetch bytes may be in flight: halved when the "
+             "fraction is above the target, increased by 8 MB when below (between 1 and 128 MB), as in TCP congestion control.")
+    d.para("The memory-pressure experiment of Section 6.2 was repeated with both policies, five runs per configuration:")
+    d.table([HDR, row("No daemon", P8["1"]), row("Daemon", P8["4"], pf(P8["4"])), row("Daemon + dead-file eviction", P8["11"], pf(P8["11"])),
+             row("Daemon + adaptive I/O limit", P8["10"], pf(P8["10"]))], W7)
+    d.para(
+        f"The plain daemon reproduced the earlier gain: throughput {ci(sig('v8_pressure', '4', 'throughput (per run)'))}. Dead-file eviction "
+        f"dropped {ev.get('evicted_dead', 0):.0f} files after use in one 40-second run and was better than the plain daemon: throughput "
+        f"{ci(sig('v8_pressure', '11', 'throughput (per run)', 'vs_full'))} and p99 latency {ci(sig('v8_pressure', '11', 'p99 latency', 'vs_full'))}, "
+        f"or {ci(sig('v8_pressure', '11', 'throughput (per run)'))} over no daemon. Its hit rate was lower ({P8['11']['hit']:.1f}% against "
+        f"{P8['4']['hit']:.1f}%), so the gain is not from keeping more data in memory. The likely reason, not measured directly, is that pages freed "
+        "at close are available at once for the next prefetch and read, which would otherwise wait for the kernel to reclaim memory.")
+    d.para(
+        f"The adaptive limit made no practical difference under memory pressure (it cut its window {ad.get('adapt_cuts', 0):.0f} times in "
+        f"{ad.get('adapt_samples', 0):.0f} checks), which is correct because the disk was not the bottleneck there. On the slow disk with 10 ms of "
+        f"think time (Section 6.4) it removed the tail-latency cost, p99 {ci(sig('v8_slowdisk_think10', '10', 'p99 latency', 'vs_full'))} against the "
+        f"plain daemon, but only by cutting the window {ad10.get('adapt_cuts', 0):.0f} times in {ad10.get('adapt_samples', 0):.0f} checks to about "
+        f"{ad10.get('adapt_avg_mb', 0):.1f} MB, which also removed the median gain. The stall fraction stayed above the target even when almost "
+        "nothing was being prefetched, so the controller could only switch prefetching off. It works as a safety valve; choosing the target "
+        "from the stall level measured without prefetching is the obvious improvement.")
+    a4 = CO.get("v8_apps_mem400", {}).get("11", {})
+    if a4:
+        d.para(
+            "Dead-file eviction was also tried on the real programs, where it cannot help because their files fit in memory. At 300 MB the "
+            "cgroup's out-of-memory killer stopped a 196 MB Python process (the size of the daemon) in both attempts, while the plain daemon "
+            "survived the same limit. The daemon's memory grows on this workload with or without eviction (about 195 to 265 MB in 45 seconds "
+            "without a limit), so there is little headroom, but the exact reason eviction tips it over was not found. At 400 MB it ran, dropped "
+            f"{a4.get('evicted_dead', 0):.0f} files in a run, and made no significant difference compared with the plain daemon "
+            f"(throughput {ci(sig('v8_apps_mem400', '11', 'throughput (per run)', 'vs_full'))}).")
+
+V2 = DATA.get("vm2_pressure", {})
+if V2:
+    d.heading("6.10 A second machine", 2)
+    d.para("To check that the results are not specific to one machine, the memory-pressure experiment was repeated on a smaller VM: "
+           "2 virtual CPUs and 3.9 GB of RAM, the same kernel and BCC version, a 6 GB data set and no ballast, so the working set does "
+           "not fit in memory naturally. Five runs per configuration:")
+    d.table([HDR, row("No daemon", V2["1"]), row("Daemon", V2["4"], pf(V2["4"])), row("Daemon + precision gate", V2["9"], pf(V2["9"])),
+             row("Daemon + dead-file eviction", V2["11"], pf(V2["11"])), row("Daemon + adaptive I/O limit", V2["10"], pf(V2["10"]))], W7)
+    d.para(
+        f"The daemon raised the hit rate from {V2['1']['hit']:.1f}% to {V2['4']['hit']:.1f}%, but throughput changed by "
+        f"{ci(sig('vm2_pressure', '4', 'throughput (per run)'))}, which is not significant. With two CPUs shared by three readers and the "
+        "daemon, the likely bottleneck is the CPU work of copying data out of the cache rather than waiting for the disk (CPU use was not "
+        "measured), so faster reads do not lead to more reads. This matches the real-program result: prefetching only pays when the disk "
+        "is the bottleneck. With 30% random accesses on this machine nothing was significant either: throughput "
+        f"{ci(sig('vm2_noise', '4', 'throughput (per run)'))}, p99 {ci(sig('vm2_noise', '4', 'p99 latency'))}.")
+    d.para(
+        f"Dead-file eviction repeated its gain over the plain daemon: throughput {ci(sig('vm2_pressure', '11', 'throughput (per run)', 'vs_full'))} "
+        f"and median latency {ci(sig('vm2_pressure', '11', 'median latency', 'vs_full'))}, although its hit rate fell to {V2['11']['hit']:.1f}%, "
+        "below the no-daemon level. Less data cached but more work done supports the explanation that freeing pages at close saves the "
+        "kernel the work of reclaiming memory, which matters more on a machine short of CPU.")
+
 # ------------------------------------------------------------------ 7 discussion
 d.heading("7. Discussion", 1)
 d.heading("7.1 What the results mean", 2)
@@ -321,7 +442,8 @@ d.bullet("Two explanations in the first report, high userspace overhead and 'evi
          "fixed. A 26% throughput loss reported at first was most likely produced by the contaminated first run.")
 d.bullet("Careful experimental hygiene changed the conclusion more than any change to the model did.")
 d.heading("7.3 Threats to validity and limitations", 2)
-d.bullet("Everything ran on one virtual machine with 3 to 5 runs per configuration and 40 to 60 seconds per run.")
+d.bullet("Everything ran on virtual machines on one Mac (4 vCPU / 12 GB and 2 vCPU / 4 GB), with 4 to 5 runs per configuration and "
+         "40 to 60 seconds per run.")
 d.bullet("The main workload is synthetic and perfectly periodic; the real-data workload is small and CPU-bound, and its results with the "
          "fixed prefetcher are not conclusive. Earlier real-data runs were affected by the daemon's own memory footprint under very tight memory.")
 d.bullet("The 'slow disk' is a cgroup bandwidth cap, not slow hardware, and the cap is bursty.")

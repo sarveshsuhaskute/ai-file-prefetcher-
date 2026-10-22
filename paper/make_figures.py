@@ -71,7 +71,7 @@ def fig_regimes():
     regimes = [
         ("Pressure", parse_summary(f"{RAW}/v6_pressure.log"), "4"),
         ("30% noise", parse_summary(f"{RAW}/v6_noise.log"), "4"),
-        ("Slow disk", parse_summary(f"{RAW}/v3_slowdisk400MBs_think100ms_ballast9GB_chunked_willneed.log"), "5"),
+        ("Slow disk", parse_summary(f"{RAW}/v3_slowdisk400MBs_think10ms_ballast9GB_chunked_willneed.log"), "5"),
     ]
     panels = [("(a) Throughput, reads per run", "reads", "higher is better"),
               ("(b) Median read latency (p50)", "p50", "lower is better"),
