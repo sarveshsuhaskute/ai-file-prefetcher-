@@ -81,7 +81,7 @@ Memory pressure (14 GB set, 4 GB ballast), 5 runs of 40 s:
 - Daemon vs no daemon (replication of v6): throughput +31.6% [+28.5, +34.7], p<0.001, p50 -59.4% [-64.9, -54.0], p<0.001, p99 -25.5% [-38.4, -12.7], p=0.004.
 - **Dead-file eviction vs plain daemon: throughput +5.1% [+2.7, +7.5], p=0.004, p99 -10.9% [-19.2, -2.6], p=0.017.**
   6356 files dropped in one 40 s run. Lower hit rate (64.6% vs 69.7%) yet more throughput:
-  likely less waiting for reclaim (freed pages are available at once); reclaim activity was not measured.
+  the cause is less reclaim work, measured in section E (-95% pages scanned).
 - Adaptive limit vs plain daemon under memory pressure: throughput -0.8% [-1.4, -0.2], p=0.018: no practical effect (disk not the bottleneck).
 - Adaptive limit on the 10 ms slow disk vs plain daemon: p99 -56.6% [-82.1, -31.0], p=0.006, p50 +57.8% [+50.4, +65.3], p<0.001.
   It cut 205/209 times to ~1.5 MB: stall stays above 0.3 even with prefetching nearly off, so it acts
@@ -111,3 +111,34 @@ Memory pressure (14 GB set, 4 GB ballast), 5 runs of 40 s:
 - Gate and adaptive limit: no significant change (throughput -1.0% [-2.4, +0.4], p=0.139 and +0.4% [-1.0, +1.7], p=0.532 vs daemon).
 
 - 30% random accesses on this machine (5 runs): throughput -1.4% [-3.1, +0.3], p=0.091, p99 +8.7% [-0.0, +17.4], p=0.051: not significant, as on the main VM.
+
+## E. Cheaper tracing, measured reclaim, automatic I/O target (`v9_*`)
+- **Prediction cost.** Profiling showed ~24 candidates scored per open on real programs. Candidates whose sequence score cannot
+  reach the threshold even with a perfect context score are now skipped (exact; unit-tested), and file extensions are cached:
+  125 -> 37 us per open under cProfile. `--kernel-filter` (first read only, close only for eviction) changed little: the cost is
+  ~25,000 opens/s, mostly grep. `--only-comm` is an in-kernel allow-list of process names.
+
+| Limit | Configuration | Build (s) | Python start-up (ms) | Search (ms) |
+|---|---|---|---|---|
+| 300 MB | no daemon | 11.90 | 61.6 | 65.8 |
+| 300 MB | all programs + libraries | 14.08 | 81.2 | 124.9 |
+| 300 MB | all programs | 13.76 | 78.3 | 116.4 |
+| 300 MB | build only (`--only-comm make,cc1`) | 12.22 | 61.5 | 68.1 |
+| none | no daemon | 12.10 | 63.0 | 67.0 |
+| none | all programs + libraries | 12.66 | 69.6 | 71.9 |
+| none | all programs | 12.83 | 69.6 | 74.7 |
+| none | build only (`--only-comm make,cc1`) | 12.68 | 65.7 | 65.1 |
+
+- All programs traced, 300 MB: build +15.6% [+5.8, +25.5], p=0.006, search +76.8% [+59.8, +93.9], p<0.001.
+- **Build only, 300 MB: no program significantly slower** (build +2.7% [-5.7, +11.0], p=0.451, start-up -0.2% [-10.6, +10.2], p=0.957,
+  search +3.5% [-3.2, +10.2], p=0.239). No limit: only the traced build pays (+4.8% [+0.8, +8.8], p=0.027).
+- **Reclaim (memory pressure, 40 s runs):** pages scanned 10.3 M (no daemon), 14.3 M (daemon), 0.7 M (dead-file eviction):
+  eviction vs daemon -95.1% [-96.6, -93.6], p<0.001; direct-reclaim stalls 222 -> 0 per run; throughput +4.2% [+2.9, +5.5], p<0.001.
+  Each direct-reclaim stall scans exactly 64 pages, so the two direct-reclaim rows in statistics.md move together.
+- **Auto I/O target (`--adaptive-io auto`), busy slow disk:** baseline stall 0.62, target 0.72, 16 cuts in 176 samples; p99
+  +94.4% [+93.2, +95.7], p<0.001 vs no daemon, -1.9% [-3.5, -0.3], p=0.029 vs daemon. Negative result: the PSI stall share is
+  near saturation on a busy disk with or without prefetching, so it cannot see the extra per-read queueing. A per-read latency
+  signal is needed.
+- Note: this session's slow-disk baseline differs from v8 (no-daemon hit rate 45% vs 34%; the daemon's median gain was not
+  significant here, its p99 cost was: +98%, p<0.001).
+

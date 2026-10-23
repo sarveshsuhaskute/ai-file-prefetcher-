@@ -7,8 +7,10 @@ Kept separate from the daemon so it can be unit-tested and simulated offline.
 import json
 import os
 from collections import deque
+from functools import lru_cache
 
 
+@lru_cache(maxsize=1 << 16)
 def get_ext(filename):
     _, ext = os.path.splitext(filename)
     return ext if ext else ".none"
@@ -107,10 +109,18 @@ class PrefetchModel:
             return []
 
         ranked = []
+        # The context score is at most 1, so a candidate whose sequence score cannot reach min_conf even
+        # with a perfect context is skipped before the (much costlier) context score: same result, and
+        # on real programs, where most candidates are hopeless, prediction gets several times cheaper.
+        floor = (min_conf - (1 - self.w_seq)) / self.w_seq if self.mode == "full" else min_conf
+        ct = self.comm_total.get(comm, 0)
+        exts = self.comm_ext.get(comm, {})
         for f, s in scores.items():
             p_seq = s / total_weight
+            if p_seq < floor:
+                continue
             if self.mode == "full":
-                conf = self.w_seq * p_seq + (1 - self.w_seq) * self._p_ctx(f, comm, time_bucket)
+                conf = self.w_seq * p_seq + (1 - self.w_seq) * self._p_ctx(f, comm, time_bucket, ct, exts)
             else:
                 conf = p_seq
             if conf >= min_conf:
@@ -118,14 +128,15 @@ class PrefetchModel:
         ranked.sort(key=lambda x: x[1], reverse=True)
         return ranked[:top_k] if top_k else ranked
 
-    def _p_ctx(self, f, comm, bucket):
+    def _p_ctx(self, f, comm, bucket, ct=None, exts=None):
         ft = self.file_total.get(f, 0)
         if not ft:
             return 0.0
         p_comm = self.file_comm[f].get(comm, 0) / ft
         p_time = self.file_time[f].get(bucket, 0) / ft
-        ct = self.comm_total.get(comm, 0)
-        p_ext = self.comm_ext.get(comm, {}).get(get_ext(f), 0) / ct if ct else 0.0
+        if ct is None:
+            ct, exts = self.comm_total.get(comm, 0), self.comm_ext.get(comm, {})
+        p_ext = exts.get(get_ext(f), 0) / ct if ct else 0.0
         return (p_comm + p_time + p_ext) / 3.0
 
     # ---- persistence (JSON: safe to load, unlike pickle) ---------------

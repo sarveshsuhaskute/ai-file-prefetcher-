@@ -1,0 +1,159 @@
+[Config] scale=1.0 noise=0.0 duration=60s iterations=5
+
+--- warm-up 1/1 (discarded)
+    [System] Settling writeback + dropping caches...
+
+--- iteration 1/5: 1. No Daemon (Default Linux Readahead)
+    [System] Settling writeback + dropping caches...
+    hit=nan% reads=1805 lat={'apps': {'compile': {'ops': 5.0, 'mean': 12600.7, 'p50': 12078.0, 'p95': 14471.5}, 'python': {'ops': 913.0, 'mean': 65.8, 'p50': 62.0, 'p95': 86.7}, 'search': {'ops': 887.0, 'mean': 67.7, 'p50': 65.8, 'p95': 80.0}}, 'mean': 101.44, 'p50': 64.57, 'p95': 83.98, 'p99': 101.29, 'psi_max': 0.0, 'pgscan': 0, 'pgscan_direct': 0, 'pgsteal': 0, 'allocstall': 0}
+
+--- iteration 1/5: 13. Full AI, tracing libraries and bytecode (--include-libs)
+    [System] Settling writeback + dropping caches...
+    hit=nan% reads=1304 lat={'apps': {'compile': {'ops': 5.0, 'mean': 13412.8, 'p50': 13464.6, 'p95': 14477.4}, 'python': {'ops': 786.0, 'mean': 76.3, 'p50': 76.5, 'p95': 91.8}, 'search': {'ops': 513.0, 'mean': 117.0, 'p50': 121.2, 'p95': 155.1}}, 'mean': 143.47, 'p50': 80.79, 'p95': 151.87, 'p99': 159.17, 'psi_max': 1.97, 'pgscan': 0, 'pgscan_direct': 0, 'pgsteal': 0, 'allocstall': 0}
+
+--- iteration 1/5: 4. Full Context-Aware AI
+    [System] Settling writeback + dropping caches...
+    hit=nan% reads=1313 lat={'apps': {'compile': {'ops': 5.0, 'mean': 13482.2, 'p50': 13726.3, 'p95': 14124.2}, 'python': {'ops': 781.0, 'mean': 76.9, 'p50': 76.4, 'p95': 96.0}, 'search': {'ops': 527.0, 'mean': 114.0, 'p50': 114.9, 'p95': 161.6}}, 'mean': 142.83, 'p50': 81.34, 'p95': 154.74, 'p99': 167.92, 'psi_max': 1.97, 'pgscan': 0, 'pgscan_direct': 0, 'pgsteal': 0, 'allocstall': 0}
+
+--- iteration 1/5: 17. Full AI, tracing only the build (--only-comm make,cc1)
+    [System] Settling writeback + dropping caches...
+    hit=nan% reads=1888 lat={'apps': {'compile': {'ops': 5.0, 'mean': 12118.5, 'p50': 12190.1, 'p95': 12444.9}, 'python': {'ops': 992.0, 'mean': 60.5, 'p50': 56.8, 'p95': 76.8}, 'search': {'ops': 891.0, 'mean': 67.4, 'p50': 63.7, 'p95': 82.7}}, 'mean': 95.68, 'p50': 61.77, 'p95': 80.93, 'p99': 101.44, 'psi_max': 0.73, 'pgscan': 0, 'pgscan_direct': 0, 'pgsteal': 0, 'allocstall': 0}
+
+--- iteration 2/5: 1. No Daemon (Default Linux Readahead)
+    [System] Settling writeback + dropping caches...
+    hit=nan% reads=1931 lat={'apps': {'compile': {'ops': 6.0, 'mean': 11613.9, 'p50': 11833.3, 'p95': 11977.6}, 'python': {'ops': 1002.0, 'mean': 59.9, 'p50': 58.7, 'p95': 69.4}, 'search': {'ops': 923.0, 'mean': 65.0, 'p50': 64.6, 'p95': 71.0}}, 'mean': 98.27, 'p50': 62.41, 'p95': 70.62, 'p99': 81.79, 'psi_max': 0.46, 'pgscan': 0, 'pgscan_direct': 0, 'pgsteal': 0, 'allocstall': 0}
+
+--- iteration 2/5: 13. Full AI, tracing libraries and bytecode (--include-libs)
+    [System] Settling writeback + dropping caches...
+    hit=nan% reads=1146 lat={'apps': {'compile': {'ops': 4.0, 'mean': 15102.7, 'p50': 15629.5, 'p95': 15843.2}, 'python': {'ops': 689.0, 'mean': 87.2, 'p50': 86.3, 'p95': 107.5}, 'search': {'ops': 453.0, 'mean': 132.7, 'p50': 138.1, 'p95': 176.7}}, 'mean': 157.58, 'p50': 93.15, 'p95': 167.37, 'p99': 206.13, 'psi_max': 1.97, 'pgscan': 0, 'pgscan_direct': 0, 'pgsteal': 0, 'allocstall': 0}
+
+--- iteration 2/5: 4. Full Context-Aware AI
+    [System] Settling writeback + dropping caches...
+    hit=nan% reads=1349 lat={'apps': {'compile': {'ops': 5.0, 'mean': 13409.9, 'p50': 13600.8, 'p95': 13993.2}, 'python': {'ops': 802.0, 'mean': 74.8, 'p50': 74.8, 'p95': 92.6}, 'search': {'ops': 542.0, 'mean': 110.8, 'p50': 107.2, 'p95': 157.5}}, 'mean': 138.7, 'p50': 79.38, 'p95': 151.37, 'p99': 170.45, 'psi_max': 1.97, 'pgscan': 0, 'pgscan_direct': 0, 'pgsteal': 0, 'allocstall': 0}
+
+--- iteration 2/5: 17. Full AI, tracing only the build (--only-comm make,cc1)
+    [System] Settling writeback + dropping caches...
+    hit=nan% reads=1840 lat={'apps': {'compile': {'ops': 5.0, 'mean': 12412.5, 'p50': 12399.5, 'p95': 12925.2}, 'python': {'ops': 962.0, 'mean': 62.4, 'p50': 60.5, 'p95': 76.9}, 'search': {'ops': 873.0, 'mean': 68.8, 'p50': 66.1, 'p95': 86.2}}, 'mean': 98.99, 'p50': 64.05, 'p95': 82.65, 'p99': 102.25, 'psi_max': 0.79, 'pgscan': 0, 'pgscan_direct': 0, 'pgsteal': 0, 'allocstall': 0}
+
+--- iteration 3/5: 1. No Daemon (Default Linux Readahead)
+    [System] Settling writeback + dropping caches...
+    hit=nan% reads=1727 lat={'apps': {'compile': {'ops': 5.0, 'mean': 12907.2, 'p50': 12830.0, 'p95': 13634.2}, 'python': {'ops': 878.0, 'mean': 68.4, 'p50': 67.4, 'p95': 85.1}, 'search': {'ops': 844.0, 'mean': 71.1, 'p50': 70.5, 'p95': 82.6}}, 'mean': 106.89, 'p50': 69.25, 'p95': 84.58, 'p99': 112.97, 'psi_max': 0.37, 'pgscan': 0, 'pgscan_direct': 0, 'pgsteal': 0, 'allocstall': 0}
+
+--- iteration 3/5: 13. Full AI, tracing libraries and bytecode (--include-libs)
+    [System] Settling writeback + dropping caches...
+    hit=nan% reads=1204 lat={'apps': {'compile': {'ops': 5.0, 'mean': 14381.7, 'p50': 14269.1, 'p95': 15699.3}, 'python': {'ops': 722.0, 'mean': 83.2, 'p50': 82.2, 'p95': 106.9}, 'search': {'ops': 477.0, 'mean': 126.0, 'p50': 135.7, 'p95': 175.1}}, 'mean': 159.53, 'p50': 88.54, 'p95': 164.29, 'p99': 190.7, 'psi_max': 1.95, 'pgscan': 0, 'pgscan_direct': 0, 'pgsteal': 0, 'allocstall': 0}
+
+--- iteration 3/5: 4. Full Context-Aware AI
+    [System] Settling writeback + dropping caches...
+    hit=nan% reads=1348 lat={'apps': {'compile': {'ops': 5.0, 'mean': 13328.1, 'p50': 13459.5, 'p95': 13992.8}, 'python': {'ops': 804.0, 'mean': 74.7, 'p50': 74.5, 'p95': 92.6}, 'search': {'ops': 539.0, 'mean': 111.5, 'p50': 110.7, 'p95': 154.4}}, 'mean': 138.57, 'p50': 79.17, 'p95': 150.42, 'p99': 165.52, 'psi_max': 1.91, 'pgscan': 0, 'pgscan_direct': 0, 'pgsteal': 0, 'allocstall': 0}
+
+--- iteration 3/5: 17. Full AI, tracing only the build (--only-comm make,cc1)
+    [System] Settling writeback + dropping caches...
+    hit=nan% reads=1932 lat={'apps': {'compile': {'ops': 6.0, 'mean': 11689.2, 'p50': 11873.2, 'p95': 12035.0}, 'python': {'ops': 1017.0, 'mean': 59.0, 'p50': 56.3, 'p95': 71.4}, 'search': {'ops': 909.0, 'mean': 66.1, 'p50': 63.0, 'p95': 83.6}}, 'mean': 98.46, 'p50': 61.46, 'p95': 77.19, 'p99': 94.65, 'psi_max': 0.81, 'pgscan': 0, 'pgscan_direct': 0, 'pgsteal': 0, 'allocstall': 0}
+
+--- iteration 4/5: 1. No Daemon (Default Linux Readahead)
+    [System] Settling writeback + dropping caches...
+    hit=nan% reads=1995 lat={'apps': {'compile': {'ops': 6.0, 'mean': 11335.6, 'p50': 11339.1, 'p95': 11724.5}, 'python': {'ops': 1034.0, 'mean': 58.0, 'p50': 56.1, 'p95': 67.8}, 'search': {'ops': 955.0, 'mean': 62.8, 'p50': 61.7, 'p95': 70.0}}, 'mean': 94.25, 'p50': 59.95, 'p95': 69.65, 'p99': 86.9, 'psi_max': 0.19, 'pgscan': 0, 'pgscan_direct': 0, 'pgsteal': 0, 'allocstall': 0}
+
+--- iteration 4/5: 13. Full AI, tracing libraries and bytecode (--include-libs)
+    [System] Settling writeback + dropping caches...
+    hit=nan% reads=1224 lat={'apps': {'compile': {'ops': 5.0, 'mean': 13827.5, 'p50': 14059.6, 'p95': 15113.9}, 'python': {'ops': 742.0, 'mean': 80.9, 'p50': 80.6, 'p95': 99.9}, 'search': {'ops': 477.0, 'mean': 125.9, 'p50': 133.7, 'p95': 163.5}}, 'mean': 154.59, 'p50': 85.79, 'p95': 157.09, 'p99': 169.94, 'psi_max': 2.17, 'pgscan': 0, 'pgscan_direct': 0, 'pgsteal': 0, 'allocstall': 0}
+
+--- iteration 4/5: 4. Full Context-Aware AI
+    [System] Settling writeback + dropping caches...
+    hit=nan% reads=1329 lat={'apps': {'compile': {'ops': 5.0, 'mean': 13387.8, 'p50': 13811.5, 'p95': 14160.9}, 'python': {'ops': 792.0, 'mean': 75.8, 'p50': 74.7, 'p95': 96.7}, 'search': {'ops': 532.0, 'mean': 113.0, 'p50': 112.3, 'p95': 159.5}}, 'mean': 140.74, 'p50': 79.9, 'p95': 152.05, 'p99': 170.12, 'psi_max': 1.86, 'pgscan': 0, 'pgscan_direct': 0, 'pgsteal': 0, 'allocstall': 0}
+
+--- iteration 4/5: 17. Full AI, tracing only the build (--only-comm make,cc1)
+    [System] Settling writeback + dropping caches...
+    hit=nan% reads=1838 lat={'apps': {'compile': {'ops': 5.0, 'mean': 12413.1, 'p50': 12262.1, 'p95': 12824.1}, 'python': {'ops': 962.0, 'mean': 62.4, 'p50': 60.2, 'p95': 76.5}, 'search': {'ops': 871.0, 'mean': 68.9, 'p50': 66.2, 'p95': 85.1}}, 'mean': 99.1, 'p50': 64.13, 'p95': 81.41, 'p99': 102.56, 'psi_max': 0.61, 'pgscan': 0, 'pgscan_direct': 0, 'pgsteal': 0, 'allocstall': 0}
+
+--- iteration 5/5: 1. No Daemon (Default Linux Readahead)
+    [System] Settling writeback + dropping caches...
+    hit=nan% reads=2037 lat={'apps': {'compile': {'ops': 6.0, 'mean': 11038.7, 'p50': 11127.9, 'p95': 11442.4}, 'python': {'ops': 1070.0, 'mean': 56.1, 'p50': 54.8, 'p95': 62.8}, 'search': {'ops': 961.0, 'mean': 62.5, 'p50': 61.7, 'p95': 67.5}}, 'mean': 91.46, 'p50': 59.64, 'p95': 66.61, 'p99': 71.51, 'psi_max': 0.41, 'pgscan': 0, 'pgscan_direct': 0, 'pgsteal': 0, 'allocstall': 0}
+
+--- iteration 5/5: 13. Full AI, tracing libraries and bytecode (--include-libs)
+    [System] Settling writeback + dropping caches...
+    hit=nan% reads=1259 lat={'apps': {'compile': {'ops': 5.0, 'mean': 13688.6, 'p50': 13913.8, 'p95': 15107.3}, 'python': {'ops': 764.0, 'mean': 78.6, 'p50': 79.2, 'p95': 94.8}, 'search': {'ops': 490.0, 'mean': 122.7, 'p50': 130.5, 'p95': 164.0}}, 'mean': 149.8, 'p50': 83.59, 'p95': 157.1, 'p99': 174.83, 'psi_max': 1.95, 'pgscan': 0, 'pgscan_direct': 0, 'pgsteal': 0, 'allocstall': 0}
+
+--- iteration 5/5: 4. Full Context-Aware AI
+    [System] Settling writeback + dropping caches...
+    hit=nan% reads=1130 lat={'apps': {'compile': {'ops': 4.0, 'mean': 15177.1, 'p50': 15323.7, 'p95': 15995.6}, 'python': {'ops': 673.0, 'mean': 89.3, 'p50': 87.6, 'p95': 112.5}, 'search': {'ops': 453.0, 'mean': 132.7, 'p50': 131.9, 'p95': 182.9}}, 'mean': 160.09, 'p50': 95.6, 'p95': 168.25, 'p99': 202.5, 'psi_max': 2.07, 'pgscan': 0, 'pgscan_direct': 0, 'pgsteal': 0, 'allocstall': 0}
+
+--- iteration 5/5: 17. Full AI, tracing only the build (--only-comm make,cc1)
+    [System] Settling writeback + dropping caches...
+    hit=nan% reads=1820 lat={'apps': {'compile': {'ops': 5.0, 'mean': 12456.0, 'p50': 12419.0, 'p95': 13147.0}, 'python': {'ops': 950.0, 'mean': 63.2, 'p50': 60.2, 'p95': 79.7}, 'search': {'ops': 865.0, 'mean': 69.4, 'p50': 65.9, 'p95': 88.7}}, 'mean': 100.21, 'p50': 64.3, 'p95': 84.51, 'p99': 104.15, 'psi_max': 1.07, 'pgscan': 0, 'pgscan_direct': 0, 'pgsteal': 0, 'allocstall': 0}
+
+============================================================
+SUMMARY
+============================================================
+
+Result: 1. No Daemon (Default Linux Readahead)
+Mean Cache Hit Rate: n/a (n=5) | ops/run ~1899
+   [apps] compile: ops/run 5.6 | mean 11899.2 ms +/- 813.6 | p50 11841.7 ms | p95 12650.0 ms | per-run means [12600.7, 11613.9, 12907.2, 11335.6, 11038.7]
+   [apps] python: ops/run 979.4 | mean 61.6 ms +/- 5.2 | p50 59.8 ms | p95 74.4 ms | per-run means [65.8, 59.9, 68.4, 58.0, 56.1]
+   [apps] search: ops/run 914.0 | mean 65.8 ms +/- 3.6 | p50 64.9 ms | p95 74.2 ms | per-run means [67.7, 65.0, 71.1, 62.8, 62.5]
+   peak memory PSI some-avg10: [0.0, 0.5, 0.4, 0.2, 0.4]
+   read latency mean: 98.46 ms
+   read latency p50: 63.16 ms
+   read latency p95: 75.09 ms
+   read latency p99: 90.89 ms
+   runs: ['nan%', 'nan%', 'nan%', 'nan%', 'nan%']  reads: [1805, 1931, 1727, 1995, 2037]
+
+Result: 13. Full AI, tracing libraries and bytecode (--include-libs)
+Mean Cache Hit Rate: n/a (n=5) | ops/run ~1227
+   [apps] compile: ops/run 4.8 | mean 14082.7 ms +/- 670.6 | p50 14267.3 ms | p95 15248.2 ms | per-run means [13412.8, 15102.7, 14381.7, 13827.5, 13688.6]
+   [apps] python: ops/run 740.6 | mean 81.2 ms +/- 4.2 | p50 81.0 ms | p95 100.2 ms | per-run means [76.3, 87.2, 83.2, 80.9, 78.6]
+   [apps] search: ops/run 482.0 | mean 124.9 ms +/- 5.7 | p50 131.8 ms | p95 166.9 ms | per-run means [117.0, 132.7, 126.0, 125.9, 122.7]
+   peak memory PSI some-avg10: [2.0, 2.0, 1.9, 2.2, 1.9]
+   read latency mean: 152.99 ms
+   read latency p50: 86.37 ms
+   read latency p95: 159.54 ms
+   read latency p99: 180.15 ms
+   runs: ['nan%', 'nan%', 'nan%', 'nan%', 'nan%']  reads: [1304, 1146, 1204, 1224, 1259]
+    [Interval Stats at t=60s] Max RSS: 180920 KB, Tree Size/Active Sequences: 79494, Actuator: {'issued': 37988, 'throttled_mem': 0, 'deduped': 1391394, 'dropped_queue': 38, 'dropped_inflight': 0}
+    [Precision Stats] Useful Prefetches: 37164 / 39510 (94.1%)
+    [Precision Stats] Total DONTNEED Evictions: 0
+    [Actuator] {'issued': 39510, 'throttled_mem': 0, 'deduped': 1471478, 'dropped_queue': 38, 'dropped_inflight': 0}
+    [Overhead] Avg model+dispatch time per open event: 15.5 us (1512989 events)
+    [Overhead] Max RSS (RAM): 187704 KB
+    [Overhead] CPU Time: User 33.91s, Sys 3.91s
+
+Result: 4. Full Context-Aware AI
+Mean Cache Hit Rate: n/a (n=5) | ops/run ~1294
+   [apps] compile: ops/run 4.8 | mean 13757.0 ms +/- 795.8 | p50 13984.4 ms | p95 14453.3 ms | per-run means [13482.2, 13409.9, 13328.1, 13387.8, 15177.1]
+   [apps] python: ops/run 770.4 | mean 78.3 ms +/- 6.2 | p50 77.6 ms | p95 98.1 ms | per-run means [76.9, 74.8, 74.7, 75.8, 89.3]
+   [apps] search: ops/run 518.6 | mean 116.4 ms +/- 9.2 | p50 115.4 ms | p95 163.2 ms | per-run means [114.0, 110.8, 111.5, 113.0, 132.7]
+   peak memory PSI some-avg10: [2.0, 2.0, 1.9, 1.9, 2.1]
+   read latency mean: 144.19 ms
+   read latency p50: 83.08 ms
+   read latency p95: 155.37 ms
+   read latency p99: 175.30 ms
+   runs: ['nan%', 'nan%', 'nan%', 'nan%', 'nan%']  reads: [1313, 1349, 1348, 1329, 1130]
+    [Interval Stats at t=60s] Max RSS: 170768 KB, Tree Size/Active Sequences: 171401, Actuator: {'issued': 35335, 'throttled_mem': 0, 'deduped': 1146492, 'dropped_queue': 196, 'dropped_inflight': 0}
+    [Precision Stats] Useful Prefetches: 33895 / 36123 (93.8%)
+    [Precision Stats] Total DONTNEED Evictions: 0
+    [Actuator] {'issued': 36123, 'throttled_mem': 0, 'deduped': 1193835, 'dropped_queue': 196, 'dropped_inflight': 0}
+    [Overhead] Avg model+dispatch time per open event: 17.1 us (1229716 events)
+    [Overhead] Max RSS (RAM): 204772 KB
+    [Overhead] CPU Time: User 30.67s, Sys 3.40s
+
+Result: 17. Full AI, tracing only the build (--only-comm make,cc1)
+Mean Cache Hit Rate: n/a (n=5) | ops/run ~1864
+   [apps] compile: ops/run 5.2 | mean 12217.9 ms +/- 324.8 | p50 12228.8 ms | p95 12675.2 ms | per-run means [12118.5, 12412.5, 11689.2, 12413.1, 12456.0]
+   [apps] python: ops/run 976.6 | mean 61.5 ms +/- 1.7 | p50 58.8 ms | p95 76.3 ms | per-run means [60.5, 62.4, 59.0, 62.4, 63.2]
+   [apps] search: ops/run 881.8 | mean 68.1 ms +/- 1.4 | p50 65.0 ms | p95 85.3 ms | per-run means [67.4, 68.8, 66.1, 68.9, 69.4]
+   peak memory PSI some-avg10: [0.7, 0.8, 0.8, 0.6, 1.1]
+   read latency mean: 98.49 ms
+   read latency p50: 63.14 ms
+   read latency p95: 81.34 ms
+   read latency p99: 101.01 ms
+   runs: ['nan%', 'nan%', 'nan%', 'nan%', 'nan%']  reads: [1888, 1840, 1932, 1838, 1820]
+    [Interval Stats at t=60s] Max RSS: 170684 KB, Tree Size/Active Sequences: 17134, Actuator: {'issued': 4038, 'throttled_mem': 0, 'deduped': 154788, 'dropped_queue': 0, 'dropped_inflight': 0}
+    [Precision Stats] Useful Prefetches: 3925 / 4363 (90.0%)
+    [Precision Stats] Total DONTNEED Evictions: 0
+    [Actuator] {'issued': 4363, 'throttled_mem': 0, 'deduped': 166905, 'dropped_queue': 0, 'dropped_inflight': 0}
+    [Overhead] Avg model+dispatch time per open event: 12.2 us (172049 events)
+    [Overhead] Max RSS (RAM): 170684 KB
+    [Overhead] CPU Time: User 3.92s, Sys 0.46s
+
+Evaluation Complete.

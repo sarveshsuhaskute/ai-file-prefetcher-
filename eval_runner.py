@@ -60,6 +60,24 @@ def psi_some_avg10():
         return 0.0
 
 
+def reclaim_counters():
+    """Kernel page-reclaim activity so far (/proc/vmstat): pages scanned (all, and by direct reclaim in the
+    allocating task), pages reclaimed, and direct-reclaim stalls. Differences over a run show reclaim work.
+    Exact names: pgscan_anon/pgscan_file repeat the same totals split by type."""
+    groups = {"pgscan": ("pgscan_kswapd", "pgscan_direct", "pgscan_khugepaged"), "pgscan_direct": ("pgscan_direct",),
+              "pgsteal": ("pgsteal_kswapd", "pgsteal_direct", "pgsteal_khugepaged")}
+    out = dict.fromkeys(list(groups) + ["allocstall"], 0)
+    try:
+        with open("/proc/vmstat") as fh:
+            vals = dict(line.split() for line in fh)
+        for key, names in groups.items():
+            out[key] = sum(int(vals.get(n, 0)) for n in names)
+        out["allocstall"] = sum(int(v) for k, v in vals.items() if k.startswith("allocstall_"))
+    except (OSError, ValueError):
+        pass
+    return out
+
+
 def run_workload_iteration(daemon_mode, duration, scale, noise, workload, think_ms=10.0, extra_daemon_args=()):
     drop_caches()
 
@@ -81,6 +99,7 @@ def run_workload_iteration(daemon_mode, duration, scale, noise, workload, think_
             psi_max[0] = max(psi_max[0], psi_some_avg10())
     sampler = threading.Thread(target=sample, daemon=True)
     sampler.start()
+    vm0 = reclaim_counters()
     workload = subprocess.run(
         ([sys.executable, "realworld.py", str(duration)] if workload == "real" else
          [sys.executable, "realapps.py", str(duration)] if workload == "apps" else
@@ -89,6 +108,7 @@ def run_workload_iteration(daemon_mode, duration, scale, noise, workload, think_
         capture_output=True, text=True)
 
     stop.set()
+    vm1 = reclaim_counters()
     hit_rate, total_reads, time_series, lat = None, None, [], {}
     for line in workload.stdout.split("\n"):
         m = re.search(r"Overall Cache Hit Rate: ([\d.]+%|n/a) \(Total Reads: (\d+)\)", line)
@@ -118,6 +138,7 @@ def run_workload_iteration(daemon_mode, duration, scale, noise, workload, think_
         log.close()
         os.unlink(log.name)
     lat["psi_max"] = psi_max[0]
+    lat.update({k: vm1[k] - vm0[k] for k in vm0})
     return hit_rate, total_reads, lat, daemon_lines
 
 
@@ -157,6 +178,13 @@ def set_readahead(kb, dev):
 
 
 BASELINES = {
+    "full-kf": ("12. Full AI, in-kernel filtering (first read only, no close events)", "full", ("--kernel-filter",)),
+    "full-libs": ("13. Full AI, tracing libraries and bytecode (--include-libs)", "full", ("--include-libs",)),
+    "full-libs-kf": ("14. Full AI, libraries + in-kernel filtering", "full", ("--include-libs", "--kernel-filter")),
+    "full-adapt-auto": ("15. Full AI + adaptive I/O limit, target from paused-prefetch stall", "full", ("--adaptive-io", "auto")),
+    "full-evict-kf": ("16. Full AI + dead-file eviction, in-kernel filtering", "full", ("--evict-dead", "--kernel-filter")),
+    "full-only-build": ("17. Full AI, tracing only the build (--only-comm make,cc1)", "full",
+                        ("--kernel-filter", "--only-comm", "make,cc1")),
     "full-adapt": ("10. Full AI + adaptive I/O limit (target stall 0.3)", "full", ("--adaptive-io", "0.3")),
     "full-evict": ("11. Full AI + dead-file eviction", "full", ("--evict-dead",)),
     "full-gate": ("9. Full AI + precision-aware gate (min precision 0.6)", "full", ("--min-precision", "0.6")),

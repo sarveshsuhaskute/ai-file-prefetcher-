@@ -25,7 +25,8 @@ def sig(name):
     if not os.path.exists(p):
         return {}
     out = {}
-    for tag, rows in (("vs_none", stats.report(p)), ("vs_full", stats.report(p, base_prefix="4.", only={"8", "9", "10", "11"}))):
+    for tag, rows in (("vs_none", stats.report(p)), ("vs_full", stats.report(p, base_prefix="4.", only={"8", "9", "10", "11", "12", "15", "16"})),
+                      ("vs_libs", stats.report(p, base_prefix="13.", only={"4", "12", "14", "17"}))):
         for cfg, metric, _na, _nb, d, lo, hi, pv in rows:
             out.setdefault(tag, {}).setdefault(cfg.split(".")[0], {})[metric] = [round(d, 2), round(lo, 2), round(hi, 2), pv]
     return out
@@ -65,7 +66,8 @@ def daemon_cost(name):
 
 LOGS = ["v6_pressure.log", "v6_noise.log", "v3_slowdisk400MBs_think10ms_ballast9GB_chunked_willneed.log",
         "v7_apps_unlimited.log", "v7_apps_mem400.log", "v7_apps_mem300.log", "v8_slowdisk_think100.log",
-        "v8_slowdisk_think10.log", "v8_pressure.log", "v8_apps_mem400.log", "vm2_pressure.log", "vm2_noise.log"]
+        "v8_slowdisk_think10.log", "v8_pressure.log", "v8_apps_mem400.log", "vm2_pressure.log", "vm2_noise.log", "v9_apps_mem300.log", "v9_apps_unlimited.log",
+        "v9_pressure.log", "v9_slowdisk_think10.log"]
 
 
 data = {
@@ -82,8 +84,13 @@ data = {
     "vm2_pressure": load("vm2_pressure.log"),
     "vm2_noise": load("vm2_noise.log"),
     "apps": {k: apps(f"v7_apps_{k}.log") for k in ("unlimited", "mem400", "mem300")} | {"evict400": apps("v8_apps_mem400.log")},
+    "apps9": {k: apps(f"v9_apps_{k}.log") for k in ("mem300", "unlimited")},
+    "v9_pressure": load("v9_pressure.log"),
+    "v9_slow10": load("v9_slowdisk_think10.log"),
     "cost": {n.rsplit(".", 1)[0]: daemon_cost(n) for n in ("v7_apps_mem300.log", "v8_apps_mem400.log", "v8_pressure.log",
-                                                            "v8_slowdisk_think10.log", "v8_slowdisk_think100.log", "vm2_pressure.log")},
+                                                            "v8_slowdisk_think10.log", "v8_slowdisk_think100.log", "vm2_pressure.log",
+                                                            "v9_apps_mem300.log", "v9_apps_unlimited.log", "v9_pressure.log",
+                                                            "v9_slowdisk_think10.log")},
     "sig": {n.rsplit(".", 1)[0]: sig(n) for n in LOGS},
     "willneed": json.load(open(os.path.join(RAW, "willneed_probe.json"))) if os.path.exists(os.path.join(RAW, "willneed_probe.json")) else None,
 }

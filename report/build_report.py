@@ -384,7 +384,7 @@ if P8:
         f"dropped {ev.get('evicted_dead', 0):.0f} files after use in one 40-second run and was better than the plain daemon: throughput "
         f"{ci(sig('v8_pressure', '11', 'throughput (per run)', 'vs_full'))} and p99 latency {ci(sig('v8_pressure', '11', 'p99 latency', 'vs_full'))}, "
         f"or {ci(sig('v8_pressure', '11', 'throughput (per run)'))} over no daemon. Its hit rate was lower ({P8['11']['hit']:.1f}% against "
-        f"{P8['4']['hit']:.1f}%), so the gain is not from keeping more data in memory. The likely reason, not measured directly, is that pages freed "
+        f"{P8['4']['hit']:.1f}%), so the gain is not from keeping more data in memory. The reason, measured in Section 6.11, is that pages freed "
         "at close are available at once for the next prefetch and read, which would otherwise wait for the kernel to reclaim memory.")
     d.para(
         f"The adaptive limit made no practical difference under memory pressure (it cut its window {ad.get('adapt_cuts', 0):.0f} times in "
@@ -424,6 +424,43 @@ if V2:
         f"and median latency {ci(sig('vm2_pressure', '11', 'median latency', 'vs_full'))}, although its hit rate fell to {V2['11']['hit']:.1f}%, "
         "below the no-daemon level. Less data cached but more work done supports the explanation that freeing pages at close saves the "
         "kernel the work of reclaiming memory, which matters more on a machine short of CPU.")
+
+A9 = DATA.get("apps9", {})
+if A9:
+    c9 = CO.get("v9_slowdisk_think10", {}).get("15", {})
+    d.heading("6.11 Cheaper tracing, measured reclaim, and an automatic I/O target", 2)
+    d.para("Profiling the daemon on the real programs showed that prediction scored about 24 candidate files per open and computed a "
+           "context score for each, although most could never reach the threshold. Since the context score is at most 1, a candidate whose "
+           "sequence score is below (threshold - 0.4) / 0.6 cannot qualify and is now skipped; this changes no prediction (a unit test checks it), "
+           "and with a cache of file extensions the cost per open fell from 125 to 37 microseconds under the profiler. Reporting only the first "
+           "read of each file from the kernel, and close events only when eviction needs them (`--kernel-filter`), changed little, because the "
+           "cost comes from about 25,000 opens per second, mostly from grep. The remaining cost is removed by tracing only the programs that need "
+           "prefetching, with an in-kernel allow-list of process names (`--only-comm`). Mean time per operation, five runs:")
+    rows = [["Limit, configuration", "Build (s)", "Python start-up (ms)", "Search (ms)"]]
+    for lab, k in (("300 MB", "mem300"), ("No limit", "unlimited")):
+        for cfg, name in (("1", "no daemon"), ("13", "all programs + libraries"), ("4", "all programs"), ("17", "build only")):
+            a = A9[k][cfg]
+            rows.append([f"{lab}, {name}", f"{a['compile'] / 1000:.2f}", f"{a['python']:.1f}", f"{a['search']:.1f}"])
+    d.table(rows, [3200, 1500, 2000, 1500])
+    d.para(
+        f"Tracing every program still slowed them (at 300 MB: build {ci(sig('v9_apps_mem300', '4', 'compile time per op'))}, search "
+        f"{ci(sig('v9_apps_mem300', '4', 'search time per op'))}). Tracing only the build removed the cost for everything else: at 300 MB no "
+        f"program was significantly slower (build {ci(sig('v9_apps_mem300', '17', 'compile time per op'))}, search "
+        f"{ci(sig('v9_apps_mem300', '17', 'search time per op'))}), and without a limit only the traced build paid "
+        f"({ci(sig('v9_apps_unlimited', '17', 'compile time per op'))}).")
+    d.para(
+        "The harness now records the kernel's reclaim activity in each run. Under memory pressure, reclaim scanned about 10.3 million pages "
+        "in a 40-second run without the daemon, 14.3 million with it, and 0.7 million with dead-file eviction: "
+        f"{ci(sig('v9_pressure', '11', 'pages scanned by reclaim', 'vs_full'))} against the plain daemon. Direct-reclaim stalls, in which the "
+        "reading process itself has to free memory, fell from 222 per run to none. Throughput again improved: "
+        f"{ci(sig('v9_pressure', '11', 'throughput (per run)', 'vs_full'))}. This confirms why dead-file eviction helps.")
+    d.para(
+        "An automatic target for the adaptive I/O limit (`--adaptive-io auto`) did not work. Every 10 seconds it paused prefetching for 1.5 "
+        f"seconds, measured the stall the workload caused on its own (0.62 on the busy slow disk), and aimed 0.1 above it. It then cut its "
+        f"window only {c9.get('adapt_cuts', 0):.0f} times in {c9.get('adapt_samples', 0):.0f} checks, and the tail cost stayed "
+        f"(p99 {ci(sig('v9_slowdisk_think10', '15', 'p99 latency'))} against no daemon). On a disk that is busy most of the time, the share "
+        "of time some task is stalled is near its limit with or without prefetching; extra prefetch reads make each read wait longer without "
+        "raising that share much. Protecting the tail needs a per-read latency signal.")
 
 # ------------------------------------------------------------------ 7 discussion
 d.heading("7. Discussion", 1)

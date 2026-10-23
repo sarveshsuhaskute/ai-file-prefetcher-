@@ -7,6 +7,10 @@ IOPressureController (--adaptive-io)
     Every interval the controller turns that into a stall fraction and adjusts the bytes of
     prefetch allowed in flight: halve when the stall fraction is above target, grow by a
     fixed step when below (AIMD, as in TCP congestion control).
+    With a fixed target the controller cannot tell prefetch-caused stall from the disk's own: on
+    a disk that stalls above the target with no prefetching it can only switch prefetching off.
+    In auto mode (auto_margin set) it periodically pauses prefetching for a moment, measures the
+    stall the workload causes on its own, and sets the target that much plus the margin.
 
 DeadFileEvictor (--evict-dead)
     Under LRU a file whose reuse distance exceeds the cache is evicted before it is used
@@ -25,8 +29,15 @@ MB = 1 << 20
 
 class IOPressureController:
     def __init__(self, target=0.3, start_mb=32, min_mb=1, max_mb=128, step_mb=8, interval=0.25,
-                 psi="/proc/pressure/io", clock=time.monotonic):
+                 psi="/proc/pressure/io", clock=time.monotonic, auto_margin=None, probe_every=10.0, probe_len=1.5):
         self.target, self.interval, self.psi, self.clock = target, interval, psi, clock
+        self.auto_margin, self.probe_every, self.probe_len = auto_margin, probe_every, probe_len
+        self._probe_end = None           # end time of the current probe (prefetching held at the minimum)
+        self._next_probe = None
+        self._probe_stalls = []
+        self._saved_w = None
+        self.baseline = None             # stall fraction measured with prefetching paused
+        self.probes = 0
         self.w, self.w_min, self.w_max, self.step = start_mb * MB, min_mb * MB, max_mb * MB, step_mb * MB
         self._t = self._total = None
         self.samples = self.cuts = 0
@@ -43,15 +54,43 @@ class IOPressureController:
             return None
         return None
 
+    def _probe(self, now, stall):
+        """Auto mode: True while prefetching is paused to measure the workload's own stall."""
+        if self._next_probe is None:
+            self._next_probe = now                        # first probe straight away
+        if self._probe_end is None:
+            if now < self._next_probe:
+                return False
+            self._probe_end, self._probe_stalls, self._saved_w = now + self.probe_len, [], self.w
+            self.w = self.w_min
+            return True
+        if stall is not None:
+            self._probe_stalls.append(stall)
+        if now < self._probe_end:
+            return True
+        tail = self._probe_stalls[1:] or self._probe_stalls   # the first sample still holds queued prefetch I/O
+        if tail:
+            m = sum(tail) / len(tail)
+            self.baseline = m if self.baseline is None else 0.3 * self.baseline + 0.7 * m
+            self.target = min(0.95, self.baseline + self.auto_margin)
+            self.probes += 1
+        self.w, self._probe_end, self._next_probe = self._saved_w, None, now + self.probe_every
+        return True
+
     def limit(self):
         """Current allowed prefetch bytes in flight (always >= one chunk)."""
         now = self.clock()
         if self._t is None or now - self._t >= self.interval:
             total = self._read_total()
             if total is not None:
+                stall = None
                 if self._t is not None and now > self._t:
                     stall = (total - self._total) / ((now - self._t) * 1e6)
                     self.last_stall = stall
+                if self.auto_margin is not None and self._probe(now, stall):
+                    self._t, self._total = now, total
+                    return self.w
+                if stall is not None:
                     if stall > self.target:
                         self.w = max(self.w_min, self.w // 2)
                         self.cuts += 1
@@ -64,7 +103,11 @@ class IOPressureController:
 
     def summary(self):
         avg = self.w_sum / self.samples / MB if self.samples else self.w / MB
-        return {"samples": self.samples, "cuts": self.cuts, "avg_limit_mb": round(avg, 1)}
+        out = {"samples": self.samples, "cuts": self.cuts, "avg_limit_mb": round(avg, 1)}
+        if self.auto_margin is not None:
+            out.update(probes=self.probes, baseline=None if self.baseline is None else round(self.baseline, 2),
+                       target=round(self.target, 2))
+        return out
 
 
 class DeadFileEvictor:

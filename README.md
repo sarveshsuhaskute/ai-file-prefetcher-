@@ -13,13 +13,14 @@ with Welch's t-test p-values; "n.s." = not significant (p >= 0.05). Details in [
 | Setting | Hit rate (Linux -> daemon) | Throughput | Latency |
 |---|---|---|---|
 | 14 GB set, ~7 GB cache, predictable | 14% -> 70% | **+32%** (p<0.001) | p50 **-59%**, p99 **-26%** (p=0.004) |
-| Same + dead-file eviction (`--evict-dead`) | 14% -> 65% | **+38%** (p<0.001); +5% vs daemon (p=0.004) | p99 -11% vs daemon (p=0.017) |
+| Same + dead-file eviction (`--evict-dead`) | 14% -> 65% | **+38%** (p<0.001); +4 to +5% vs daemon in 2 sessions (p<=0.004) | p99 -11% vs daemon (p=0.017); **reclaim scanning -95%** |
 | Same + 30% random accesses | 42% -> 54% | +2% (n.s.) | p99 +15% (n.s.) |
 | 400 MB/s disk, 10 ms think (disk busy) | 34% -> 58% | 0% (n.s.) | p50 -38%, **p99 +131%** (p=0.006) |
 | Same + adaptive I/O limit (`--adaptive-io 0.3`) | 34% -> 35% | 0% (n.s.) | p99 back to baseline, median gain lost |
 | 400 MB/s disk, 100 ms think (idle gaps) | 26% -> 75% | +1% (n.s.) | p99 -2% (n.s.) |
 | Second machine (2 vCPU, 4 GB), 6 GB set, no ballast | 39% -> 62% | +1% (n.s.); eviction **+6% vs daemon** (p=0.004) | p50 -5% (n.s.); eviction p50 -9% vs daemon (p<0.001) |
-| Real programs, 300 MB cgroup | n/a | build +23%, start-up +45%, search +109% time/op (all p<0.001) | |
+| Real programs, 300 MB cgroup, all programs traced | n/a | build +16%, start-up +27%, search +77% time/op (p<0.01) | |
+| Same, tracing only the build (`--only-comm make,cc1`) | n/a | **no program significantly slower** (all within ±3%) | |
 
 The original "AI loses by 26%" report (kept in `docs/final_evaluation_report.md`) was caused by a prefetch bug and did not reproduce.
 
@@ -113,6 +114,7 @@ passed to the workload). `prefetch_policies.py` adds dead-file eviction (`--evic
 1. **Check that your actuator does what you think.** `posix_fadvise(WILLNEED)` on a large file loads only ~1.2 MB; chunk it (1 MB). A "99% precision" metric that counts predictions, not resident pages, hid this for the whole first evaluation.
 2. **Harness hygiene decides conclusions:** wait out writeback before `drop_caches`, discard a warm-up run, interleave baselines.
 3. **Tail latency is the cost on a busy disk:** correct prefetches queue ahead of demand reads. An AIMD limit driven by I/O pressure removes the cost but, with a fixed target, also removes the gain; the target should come from the disk's own stall level.
-4. **Eviction matters as much as prefetching:** dropping files whose reuse distance exceeds the cache added 5% throughput on top of prefetching.
-5. **Per-event cost matters on real programs:** ~45 us per open is negligible before a 10 MB read, but not before a 4 KB cached one. A real program start-up opens hundreds of files; filtering in the kernel (by process, or first read only) is the next step.
+4. **Eviction matters as much as prefetching:** dropping files whose reuse distance exceeds the cache added 4-6% throughput on top of prefetching (three runs, two machines), by cutting the kernel's reclaim scanning by 95%.
+5. **Per-event cost matters on real programs:** ~45 us per open is negligible before a 10 MB read, but not before a 4 KB cached one. Skipping hopeless candidates made prediction ~3x cheaper; tracing only the programs that need prefetching (`--only-comm`) removed the cost for everything else.
+7. **Stall time cannot protect the tail:** an AIMD limit driven by PSI I/O stall, with a fixed or a measured target, either switches prefetching off or lets the tail cost through. A per-read latency signal is needed.
 6. **Statistics:** with 4-5 runs, several earlier "effects" (the noise-case tail, the pressure-case p99 in one session) were not significant. Report confidence intervals.
