@@ -4,15 +4,24 @@ This project is a userspace, context-aware AI prefetching daemon for Linux. It u
 
 The fundamental goal of this project was to determine whether a dynamically trained userspace AI could outperform the default Linux kernel's highly optimized readahead mechanisms under varying memory pressures. 
 
-**Spoiler:** It does not. The true contribution of this project is the diagnostic isolation of exactly *why* userspace AI struggles against mature kernel subsystems, providing concrete architectural lessons for future implementations.
+**Result (current):** it does, on predictable workloads under memory pressure, and only there. With a 14 GB set squeezed into ~7 GB of cache it gives **+32% throughput and ~60% lower median latency** vs. default Linux readahead (5 runs, p < 0.001, replicated across sessions), and **+38%** with prediction-driven eviction of dead files. It does not help with random access, hurts tail latency on a busy bandwidth-limited disk, and **slows real programs whose files fit in memory** (PostgreSQL build, grep, Python start-up: +10% to +109% time per operation). See [evaluation_v3](docs/evaluation_v3.md) and the significance tables in [statistics](docs/statistics.md). The earlier "it loses" result came from a broken prefetch call (`posix_fadvise(WILLNEED)` loads only ~12% of a 10 MB file unless chunked).
 
 ## Results Summary
-The system was evaluated strictly against the default Linux kernel under both normal load and memory-exhaustion stress tests. 
+Linux 6.8 VMs (4 vCPU / 11.9 GB, and 2 vCPU / 3.9 GB for the second machine), page cache dropped before every run, baselines interleaved. Differences are vs. no daemon,
+with Welch's t-test p-values; "n.s." = not significant (p >= 0.05). Details in [evaluation_v3](docs/evaluation_v3.md).
 
-- **Under normal conditions (4GB working set / 11GB RAM):** The AI achieves exact performance parity with the kernel (both at 99.25% hit rate). The OS caches the data entirely, rendering the AI's 99.9% precision functionally redundant.
-- **Under memory pressure (14GB working set / 11GB RAM):** The AI loses to the kernel, suffering a ~26% throughput collapse. This was traced directly to userspace computational overhead (context switching and tree updates) and an eviction-blindness flaw where the AI continuously prefetches data that the OS immediately evicts.
+| Setting | Hit rate (Linux -> daemon) | Throughput | Latency |
+|---|---|---|---|
+| 14 GB set, ~7 GB cache, predictable | 14% -> 70% | **+32%** (p<0.001) | p50 **-59%**, p99 **-26%** (p=0.004) |
+| Same + dead-file eviction (`--evict-dead`) | 14% -> 65% | **+38%** (p<0.001); +5% vs daemon (p=0.004) | p99 -11% vs daemon (p=0.017) |
+| Same + 30% random accesses | 42% -> 54% | +2% (n.s.) | p99 +15% (n.s.) |
+| 400 MB/s disk, 10 ms think (disk busy) | 34% -> 58% | 0% (n.s.) | p50 -38%, **p99 +131%** (p=0.006) |
+| Same + adaptive I/O limit (`--adaptive-io 0.3`) | 34% -> 35% | 0% (n.s.) | p99 back to baseline, median gain lost |
+| 400 MB/s disk, 100 ms think (idle gaps) | 26% -> 75% | +1% (n.s.) | p99 -2% (n.s.) |
+| Second machine (2 vCPU, 4 GB), 6 GB set, no ballast | 39% -> 62% | +1% (n.s.); eviction **+6% vs daemon** (p=0.004) | p50 -5% (n.s.); eviction p50 -9% vs daemon (p<0.001) |
+| Real programs, 300 MB cgroup | n/a | build +23%, start-up +45%, search +109% time/op (all p<0.001) | |
 
-For the full breakdown of the methodology, evaluation, and diagnostic findings, read the [Final Evaluation Report](docs/final_evaluation_report.md).
+The original "AI loses by 26%" report (kept in `docs/final_evaluation_report.md`) was caused by a prefetch bug and did not reproduce.
 
 ---
 
@@ -46,37 +55,64 @@ This project relies heavily on eBPF and kernel tracing, which requires a Linux e
 
 ## Running the Evaluation Harness
 
-The evaluation harness (`eval_runner.py`) generates a synthetic workload of interconnected file accesses and pits the AI daemon against the default Linux kernel. 
-
-### Phase 6: Memory Pressure Stress Test
-To run the adversarial stress test (14GB working set vs 11GB RAM), ensure the `workload.py` script is configured to generate 1400 files, and run:
+Everything below runs inside the Lima VM as root (needs eBPF + `drop_caches`).
 
 ```bash
-# Inside the Lima VM
-sudo python3 eval_runner.py
+# Phase 7-style: 4 GB working set (fits in RAM), 3 runs per baseline
+sudo python3 eval_runner.py --baselines none,seq,full --scale 1.0
+
+# Phase 6-style: 14 GB working set vs 11 GB RAM, and the memory-throttling A/B test
+sudo python3 eval_runner.py --baselines none,full,full-nomem --scale 3.5
+
+# Add unpredictable accesses (30% random) to stop the workload being trivially cyclic
+sudo python3 eval_runner.py --baselines none,static,seq,full --noise 0.3
 ```
-This will sequentially run the 4 isolated baselines (No Daemon, Static Miner, Sequence-Only, and Full AI) and print the cache hit rates and throughput metrics.
+The harness logs daemon output to a file (the old `[Interval Stats]` pipe/filter bug that made
+interval prints vanish is fixed), so the endurance run no longer needs to bypass it:
+`--duration 300` prints the per-minute RSS / model-size lines.
 
-### Phase 7: Normal Load & Endurance Test
-To run the endurance test (4GB working set) and verify there are no memory leaks over a 5-minute run, the evaluation harness must be bypassed (due to a known subprocess stdout capture bug in `eval_runner.py`).
+Daemon knobs: `--top-k` (max prefetches per open), `--threshold`, `--low-mem-frac`,
+`--no-mem-aware`. Models are saved as JSON (`~/.cache/prefetch_model.json`), not pickle.
 
-1. Configure `workload.py` to `100` files per worker (~4GB total).
-2. Run the isolated test:
+## Offline tools (work on any OS, no eBPF)
 ```bash
-# Start the workload in the background
-sudo python3 workload.py 300 &
+python3 -m unittest discover -s tests   # model + actuator unit tests
+python3 simulate.py                     # cache simulator: which workloads benefit? -> docs/simulation_results.md
+python3 stats.py > docs/statistics.md   # confidence intervals and Welch's t-tests for every log in docs/raw
+```
 
-# Start the daemon directly for 5 minutes and capture interval stats
-sudo timeout 305 python3 -u prefetch_daemon.py --mode full > /tmp/daemon_raw.log 2>&1
-```
-3. Check the logs for memory stability:
+Other workloads and policies (inside the VM, as root):
 ```bash
-grep "Interval Stats" /tmp/daemon_raw.log
+# real programs on the PostgreSQL source (clone + configure first, see realapps.py)
+sudo python3 eval_runner.py --workload apps --baselines none,full,full-evict --daemon-args=--include-libs
+# prediction-driven eviction and the adaptive I/O limit
+sudo python3 eval_runner.py --baselines none,full,full-evict,full-adapt --scale 3.5 --ballast-gb 4
+# a second, smaller machine: limactl start --name prefetch-small ebpf-small.yaml
 ```
+
+## What changed after the original evaluation
+The first evaluation (`docs/final_evaluation_report.md`) is kept as-is for the record. Since then:
+- `prefetch_model.py`: model split from the daemon, no per-event list rebuilds, bounded memory
+  (context pruning, per-PID cap), JSON persistence.
+- `prefetch_actuator.py`: **memory-pressure throttling** from `/proc/meminfo`, reclaim of unused
+  prefetches with `DONTNEED`, top-k fan-out, de-dup cooldown, and a real worker pool
+  (the original README claimed a thread pool that did not exist).
+- Daemon uses `ring_buffer_poll` instead of `sleep(0.1)` polling and reports per-event overhead.
+- `workload.py` takes `--scale/--noise`; `eval_runner.py` takes CLI args and runs the ablations.
+
+**Re-measured on hardware** (Linux 6.8 VM): a cleaned-up harness (writeback settle, warm-up, interleaving, latency percentiles) first
+showed no gain; that turned out to be the `WILLNEED` limit, not the model. With chunked prefetching the daemon wins under memory
+pressure ([evaluation_v2](docs/evaluation_v2.md), [evaluation_v3](docs/evaluation_v3.md)). An optional pressure throttle
+(`--reclaim-mb-s`, off by default) disabled a helpful prefetcher in every experiment. `eval_runner.py` also takes `--workload real`
+(`realworld.py`), `--workload apps` (`realapps.py`), `--ballast-gb` for controlled memory pressure and `--think-ms` (now actually
+passed to the workload). `prefetch_policies.py` adds dead-file eviction (`--evict-dead`) and an adaptive I/O limit (`--adaptive-io`).
 
 ---
 
 ## Lessons Learned & Future Work
-To outperform the default Linux kernel, the architecture must evolve beyond userspace intervention:
-1. **Memory-Aware Eviction:** Eviction logic must query system memory pressure and proactively evict the tail of the LRU cache when free memory drops, rather than relying solely on predictive confidence.
-2. **eBPF Migration:** The userspace overhead tax must be eliminated by moving the Markov chain logic entirely into kernel-space eBPF maps.
+1. **Check that your actuator does what you think.** `posix_fadvise(WILLNEED)` on a large file loads only ~1.2 MB; chunk it (1 MB). A "99% precision" metric that counts predictions, not resident pages, hid this for the whole first evaluation.
+2. **Harness hygiene decides conclusions:** wait out writeback before `drop_caches`, discard a warm-up run, interleave baselines.
+3. **Tail latency is the cost on a busy disk:** correct prefetches queue ahead of demand reads. An AIMD limit driven by I/O pressure removes the cost but, with a fixed target, also removes the gain; the target should come from the disk's own stall level.
+4. **Eviction matters as much as prefetching:** dropping files whose reuse distance exceeds the cache added 5% throughput on top of prefetching.
+5. **Per-event cost matters on real programs:** ~45 us per open is negligible before a 10 MB read, but not before a 4 KB cached one. A real program start-up opens hundreds of files; filtering in the kernel (by process, or first read only) is the next step.
+6. **Statistics:** with 4-5 runs, several earlier "effects" (the noise-case tail, the pressure-case p99 in one session) were not significant. Report confidence intervals.

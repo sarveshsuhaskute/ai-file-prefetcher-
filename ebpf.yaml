@@ -7,7 +7,7 @@ cpus: 4
 memory: "6GiB"
 disk: "30GiB"
 mounts:
-  - location: "~/prefetch-project"
+  - location: "~/Downloads/OS PROJECT"
     writable: true
 provision:
   - mode: system

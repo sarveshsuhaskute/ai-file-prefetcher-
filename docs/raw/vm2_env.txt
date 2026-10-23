@@ -1,0 +1,6 @@
+Linux 6.8.0-147-generic aarch64
+2
+               total        used        free      shared  buff/cache   available
+Mem:            3905         414        1025           1        2651        3491
+Swap:              0           0           0
+bcc 0.29.1

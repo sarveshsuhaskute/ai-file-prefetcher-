@@ -1,0 +1,26 @@
+$ sudo bpftool prog show 2>/dev/null | grep -A2 tracepoint | head -16 || echo bpftool not installed
+27: tracepoint  name lima_ticker  tag d50ea6079025dc00
+	loaded_at 2026-10-21T20:46:50+0530  uid 0
+	xlated 104B  jited 200B  memlock 4096B  map_ids 5
+--
+61: tracepoint  name trace_enter_openat  tag 8dabc805dd6377ac  gpl
+	loaded_at 2026-10-21T20:58:52+0530  uid 0
+	xlated 1712B  jited 1176B  memlock 4096B  map_ids 13
+--
+62: tracepoint  name trace_exit_openat  tag 9cf31c718c9ce18a  gpl
+	loaded_at 2026-10-21T20:58:52+0530  uid 0
+	xlated 4536B  jited 2520B  memlock 8192B  map_ids 13,12,14
+--
+63: tracepoint  name trace_enter_read  tag a193368ea89a57ca  gpl
+	loaded_at 2026-10-21T20:58:52+0530  uid 0
+	xlated 4384B  jited 2400B  memlock 8192B  map_ids 12,14
+--
+
+$ sudo grep -E "syscalls:sys_(enter|exit)_(openat|read|close)$" /sys/kernel/tracing/available_events
+syscalls:sys_exit_close
+syscalls:sys_enter_close
+syscalls:sys_exit_openat
+syscalls:sys_enter_openat
+syscalls:sys_exit_read
+syscalls:sys_enter_read
+

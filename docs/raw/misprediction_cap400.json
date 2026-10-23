@@ -1,0 +1,78 @@
+{
+  "file_mb": 10.0,
+  "k_wrong": 2,
+  "trials": 20,
+  "E1_wrong_file_time_to_resident_ms": {
+    "mean": 4.73,
+    "p50": 4.74,
+    "p95": 6.6,
+    "n": 20
+  },
+  "E1_effective_MBps": 2115.3,
+  "E2_needed_file_no_prefetch_ms": {
+    "mean": 4.07,
+    "p50": 3.87,
+    "p95": 5.38,
+    "n": 20
+  },
+  "E3_needed_file_prefetched_right_ms": {
+    "mean": 1.53,
+    "p50": 1.38,
+    "p95": 2.66,
+    "n": 20
+  },
+  "E4_needed_file_after_wrong_prefetch_ms": {
+    "gap_0ms": {
+      "mean": 22.49,
+      "p50": 20.43,
+      "p95": 46.08,
+      "n": 20
+    },
+    "gap_25ms": {
+      "mean": 3.59,
+      "p50": 3.89,
+      "p95": 5.55,
+      "n": 20
+    },
+    "gap_50ms": {
+      "mean": 4.52,
+      "p50": 4.53,
+      "p95": 7.42,
+      "n": 20
+    },
+    "gap_100ms": {
+      "mean": 2.88,
+      "p50": 2.45,
+      "p95": 5.37,
+      "n": 20
+    },
+    "gap_200ms": {
+      "mean": 11.6,
+      "p50": 12.48,
+      "p95": 13.8,
+      "n": 20
+    }
+  },
+  "E4_penalty_vs_no_prefetch_ms": {
+    "gap_0ms": {
+      "mean_ms": 18.42,
+      "pct": 452.7
+    },
+    "gap_25ms": {
+      "mean_ms": -0.48,
+      "pct": -11.8
+    },
+    "gap_50ms": {
+      "mean_ms": 0.45,
+      "pct": 11.1
+    },
+    "gap_100ms": {
+      "mean_ms": -1.19,
+      "pct": -29.2
+    },
+    "gap_200ms": {
+      "mean_ms": 7.53,
+      "pct": 185.1
+    }
+  }
+}

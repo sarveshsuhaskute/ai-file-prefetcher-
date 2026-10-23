@@ -1,0 +1,840 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style>
+<title>Prefetching Past Readahead</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@500;700;800&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: one reading column (~68ch) with wide breakouts for figures; the hero is a live mincore() residency map of a 10 MB file. */
+:root{
+  --bg:#f3f6f8; --surface:#ffffff; --ink:#13202a; --muted:#56646f; --rule:#d6dee4; --cell:#dde4ea;
+  --resident:#0f7b6c; --harm:#c0431a; --accent:#0f7b6c;
+  --c-base:#8a8984; --c-ra:#eb6834; --c-daemon:#2a78d6; --c-gate:#1baf7a; --c-adapt:#7a4fd0; --c-evict:#c23b7c;
+  --code-bg:#e9eef2;
+  --f-display:"Schibsted Grotesk", "Helvetica Neue", Arial, sans-serif;
+  --f-body:"Source Serif 4", Georgia, "Times New Roman", serif;
+  --f-mono:"JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
+  --s-0:.8125rem; --s-1:1rem; --s-2:1.1875rem; --s-3:1.5rem; --s-4:2rem; --s-5:clamp(2.1rem,5.2vw,3.6rem);
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0d1418; --surface:#141d23; --ink:#e4ebf0; --muted:#94a3ae; --rule:#26343e; --cell:#22303a;
+  --resident:#2bb39a; --harm:#f0884d; --accent:#2bb39a;
+  --c-base:#8f8e87; --c-ra:#d95926; --c-daemon:#3987e5; --c-gate:#199e70; --c-adapt:#9b7be6; --c-evict:#e0659f; --code-bg:#18232b; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0d1418; --surface:#141d23; --ink:#e4ebf0; --muted:#94a3ae; --rule:#26343e; --cell:#22303a;
+  --resident:#2bb39a; --harm:#f0884d; --accent:#2bb39a;
+  --c-base:#8f8e87; --c-ra:#d95926; --c-daemon:#3987e5; --c-gate:#199e70; --c-adapt:#9b7be6; --c-evict:#e0659f; --code-bg:#18232b; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:var(--s-2);line-height:1.6;font-size-adjust:none}
+.wrap{max-width:1080px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.col{max-width:68ch}
+h1,h2,h3{font-family:var(--f-display);line-height:1.12;text-wrap:balance;margin:0}
+h1{font-size:var(--s-5);font-weight:800;letter-spacing:-.02em}
+h2{font-size:var(--s-4);font-weight:700;letter-spacing:-.01em}
+h3{font-size:var(--s-2);font-weight:700}
+p{margin:0}
+a{color:var(--accent)}
+code,.mono{font-family:var(--f-mono);font-size:.86em}
+code{background:var(--code-bg);padding:.08em .32em;border-radius:3px}
+.eyebrow{font-family:var(--f-mono);font-size:var(--s-0);letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.muted{color:var(--muted)}
+/* nav */
+header.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:color-mix(in srgb,var(--bg) 88%,transparent);backdrop-filter:blur(8px);border-bottom:1px solid var(--rule)}
+header.top .wrap{display:flex;gap:20px;align-items:center;justify-content:space-between;padding-block:10px}
+.brand{font-family:var(--f-display);font-weight:700;font-size:var(--s-1);color:var(--ink);text-decoration:none;white-space:nowrap}
+nav.sections{display:flex;gap:18px;overflow-x:auto;font-family:var(--f-display);font-size:var(--s-0);scrollbar-width:none}
+nav.sections a{color:var(--muted);text-decoration:none;white-space:nowrap}
+nav.sections a:hover,nav.sections a:focus-visible{color:var(--ink)}
+/* sections */
+section{padding-block:clamp(48px,7vw,88px);border-bottom:1px solid var(--rule)}
+section .stack{display:flex;flex-direction:column;gap:20px}
+.hero{padding-block:clamp(36px,6vw,72px) clamp(40px,6vw,72px)}
+.hero .lede{font-size:var(--s-3);line-height:1.4;max-width:34ch;color:var(--ink);font-family:var(--f-body)}
+.hero-grid{display:grid;grid-template-columns:minmax(0,1fr);gap:36px}
+/* residency map */
+.maps{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px}
+@media (max-width:620px){.maps{grid-template-columns:minmax(0,1fr)}}
+.map{background:var(--surface);border:1px solid var(--rule);border-radius:6px;padding:16px;display:flex;flex-direction:column;gap:10px;min-width:0}
+.map header{display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap}
+.map h3{font-size:var(--s-1)}
+.map .pct{font-family:var(--f-mono);font-weight:600;font-size:var(--s-3);font-variant-numeric:tabular-nums}
+.map canvas{width:100%;aspect-ratio:64/40;display:block;max-width:100%}
+.map .call{font-family:var(--f-mono);font-size:var(--s-0);color:var(--muted);overflow-x:auto;white-space:nowrap}
+.legend{display:flex;gap:18px;flex-wrap:wrap;font-size:var(--s-0);font-family:var(--f-display);color:var(--muted);align-items:center}
+.sw{display:inline-block;width:12px;height:12px;border-radius:2px;vertical-align:-1px;margin-right:6px}
+button{font-family:var(--f-display);font-size:var(--s-0);font-weight:700;background:var(--ink);color:var(--bg);border:0;border-radius:4px;padding:8px 14px;cursor:pointer}
+button.ghost{background:transparent;color:var(--ink);border:1px solid var(--rule)}
+button:focus-visible,a:focus-visible,input:focus-visible,summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+/* key numbers */
+.keys{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:0;border-top:1px solid var(--rule);border-bottom:1px solid var(--rule)}
+.keys div{padding:18px 16px 18px 0;display:flex;flex-direction:column;gap:4px;min-width:0}
+.keys div+div{padding-left:16px;border-left:1px solid var(--rule)}
+.keys b{font-family:var(--f-display);font-size:var(--s-4);font-weight:800;font-variant-numeric:tabular-nums;letter-spacing:-.01em}
+.keys span{font-size:var(--s-0);color:var(--muted);font-family:var(--f-display);line-height:1.35}
+@media (max-width:760px){.keys{grid-template-columns:repeat(2,minmax(0,1fr))}.keys div:nth-child(3){padding-left:0;border-left:0}.keys div:nth-child(n+3){border-top:1px solid var(--rule)}}
+/* pipeline */
+.pipe{display:flex;align-items:stretch;gap:0;overflow-x:auto;padding-bottom:4px}
+.pipe .node{flex:1 1 0;min-width:130px;background:var(--surface);border:1px solid var(--rule);border-radius:6px;padding:12px;display:flex;flex-direction:column;gap:4px}
+.pipe .node b{font-family:var(--f-display);font-size:var(--s-0)}
+.pipe .node span{font-family:var(--f-mono);font-size:.72rem;color:var(--muted);line-height:1.4}
+.pipe .node.kernel{border-style:dashed}
+.pipe .arrow{flex:0 0 22px;display:flex;align-items:center;justify-content:center;color:var(--muted);font-family:var(--f-mono)}
+@media (max-width:760px){.pipe{flex-direction:column}.pipe .arrow{flex-basis:20px;transform:rotate(90deg)}.pipe .node{min-width:0}}
+.eq{font-family:var(--f-mono);font-size:var(--s-0);background:var(--surface);border:1px solid var(--rule);border-radius:6px;padding:14px 16px;overflow-x:auto;white-space:nowrap}
+ul.plain{margin:0;padding-left:1.1em;display:flex;flex-direction:column;gap:6px}
+/* tables */
+.tbl{overflow-x:auto;border:1px solid var(--rule);border-radius:6px;background:var(--surface)}
+table{border-collapse:collapse;width:100%;font-family:var(--f-display);font-size:var(--s-0);font-variant-numeric:tabular-nums}
+th,td{padding:9px 12px;text-align:right;border-bottom:1px solid var(--rule);white-space:nowrap}
+th:first-child,td:first-child{text-align:left}
+th{color:var(--muted);font-weight:500}
+tr:last-child td{border-bottom:0}
+/* tabs + charts */
+.tabs{display:flex;gap:6px;flex-wrap:wrap}
+.tabs button{background:transparent;color:var(--muted);border:1px solid var(--rule)}
+.tabs button[aria-selected="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.charts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px}
+@media (max-width:760px){.charts{grid-template-columns:minmax(0,1fr)}}
+.chart{background:var(--surface);border:1px solid var(--rule);border-radius:6px;padding:14px 14px 8px;min-width:0;display:flex;flex-direction:column;gap:4px}
+.chart h3{font-size:var(--s-0)}
+.chart p.note{font-size:.72rem;font-family:var(--f-display);color:var(--muted)}
+svg text{font-family:var(--f-display)}
+.t-ink{fill:var(--ink)} .t-muted{fill:var(--muted)} .grid{stroke:var(--rule)}
+.f-base{fill:var(--c-base)} .f-ra{fill:var(--c-ra)} .f-daemon{fill:var(--c-daemon)} .f-gate{fill:var(--c-gate)} .f-adapt{fill:var(--c-adapt)} .f-evict{fill:var(--c-evict)}
+.s-daemon{stroke:var(--c-daemon)} .s-ra{stroke:var(--c-ra)} .s-model{stroke:var(--muted)}
+.bar:hover{opacity:.85}
+.tip{position:fixed;pointer-events:none;background:var(--ink);color:var(--bg);font-family:var(--f-display);font-size:.75rem;padding:6px 9px;border-radius:4px;z-index:10;max-width:240px;line-height:1.35}
+.verdict{border-left:3px solid var(--accent);padding:4px 0 4px 14px;font-size:var(--s-1)}
+.verdict.bad{border-left-color:var(--harm)}
+/* calculator */
+.calc{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.25fr);gap:24px;align-items:start}
+@media (max-width:860px){.calc{grid-template-columns:minmax(0,1fr)}}
+.controls{background:var(--surface);border:1px solid var(--rule);border-radius:6px;padding:16px;display:flex;flex-direction:column;gap:14px}
+.ctl{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 12px;align-items:center}
+.ctl label{font-family:var(--f-display);font-size:var(--s-0)}
+.ctl output{font-family:var(--f-mono);font-size:var(--s-0);font-variant-numeric:tabular-nums}
+.ctl input{grid-column:1/-1;width:100%;accent-color:var(--accent)}
+.readout{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;border-top:1px solid var(--rule);padding-top:14px}
+.readout div{display:flex;flex-direction:column;gap:2px}
+.readout b{font-family:var(--f-display);font-size:var(--s-3);font-variant-numeric:tabular-nums}
+.readout span{font-size:.75rem;font-family:var(--f-display);color:var(--muted)}
+pre{margin:0;background:var(--code-bg);border-radius:6px;padding:14px 16px;overflow-x:auto;font-family:var(--f-mono);font-size:var(--s-0);line-height:1.6}
+.code-head{display:flex;justify-content:space-between;align-items:center;gap:10px}
+ol.refs{margin:0;padding-left:2.2em;display:flex;flex-direction:column;gap:6px;font-size:var(--s-0);line-height:1.5}
+details{background:var(--surface);border:1px solid var(--rule);border-radius:6px;padding:12px 16px}
+summary{cursor:pointer;font-family:var(--f-display);font-size:var(--s-0);font-weight:700}
+details img{margin-top:12px;max-width:min(100%,420px);display:block;margin-inline:auto}
+footer{padding-block:36px;font-family:var(--f-display);font-size:var(--s-0);color:var(--muted)}
+@media (prefers-reduced-motion:reduce){*{scroll-behavior:auto!important}}
+html{scroll-behavior:smooth}
+section[id]{scroll-margin-top:60px}
+
+/* terminal + code: deliberately dark in both themes */
+:root{--term-bg:#0b1117;--term-bar:#141c24;--term-fg:#d5e1e9;--term-dim:#7c8a95;--term-cmd:#8fc4ff;--term-ok:#5fd3b5;--term-warn:#f2a663;--term-rule:#22303b}
+.run{display:grid;grid-template-columns:minmax(0,230px) minmax(0,1fr);gap:20px;align-items:start}
+@media (max-width:860px){.run{grid-template-columns:minmax(0,1fr)}}
+.steps{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:2px;counter-reset:step}
+@media (max-width:860px){.steps{flex-direction:row;overflow-x:auto;gap:6px;padding-bottom:4px}}
+.steps button{all:unset;box-sizing:border-box;display:flex;gap:10px;align-items:baseline;width:100%;padding:8px 10px;border-radius:5px;cursor:pointer;font-family:var(--f-display);font-size:var(--s-0);color:var(--muted);white-space:nowrap}
+.steps button .n{font-family:var(--f-mono);font-size:.72rem;color:var(--muted);min-width:1.6em}
+.steps button:hover{color:var(--ink);background:var(--surface)}
+.steps button[aria-selected="true"]{background:var(--surface);color:var(--ink);box-shadow:inset 0 0 0 1px var(--rule)}
+.steps button:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.term{background:var(--term-bg);border-radius:8px;overflow:hidden;min-width:0;border:1px solid var(--term-rule)}
+.term .bar{display:flex;align-items:center;gap:12px;justify-content:space-between;background:var(--term-bar);padding:8px 12px;border-bottom:1px solid var(--term-rule)}
+.term .dots{display:flex;gap:6px}.term .dots i{width:10px;height:10px;border-radius:50%;background:#3a4650;display:block}
+.term .host{font-family:var(--f-mono);font-size:.72rem;color:var(--term-dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.term .bar button{background:transparent;color:var(--term-fg);border:1px solid var(--term-rule);padding:5px 10px;font-size:.72rem}
+.term .bar .acts{display:flex;gap:6px}
+.term pre{background:transparent;color:var(--term-fg);margin:0;border-radius:0;padding:14px 16px;max-height:520px;overflow:auto;font-size:.76rem;line-height:1.55;white-space:pre}
+.term .cmd{color:var(--term-cmd)} .term .cmd::before{content:"";}
+.term .dim{color:var(--term-dim)} .term .ok{color:var(--term-ok)} .term .warn{color:var(--term-warn)} .term .om{color:var(--term-dim);font-style:italic}
+.term .note{font-family:var(--f-display);font-size:.75rem;color:var(--term-dim);padding:0 16px 12px}
+.cursor{display:inline-block;width:.55em;height:1em;background:var(--term-fg);vertical-align:-2px;animation:blink 1s steps(1) infinite}
+@keyframes blink{50%{opacity:0}}
+@media (prefers-reduced-motion:reduce){.cursor{animation:none}}
+.codes{display:grid;grid-template-columns:minmax(0,1fr);gap:20px}
+.codebox{background:var(--term-bg);border:1px solid var(--term-rule);border-radius:8px;overflow:hidden;min-width:0}
+.codebox header{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;padding:9px 14px;background:var(--term-bar);border-bottom:1px solid var(--term-rule)}
+.codebox header b{font-family:var(--f-display);font-size:var(--s-0);color:var(--term-fg)}
+.codebox header span{font-family:var(--f-mono);font-size:.72rem;color:var(--term-dim)}
+.codebox pre{background:transparent;color:var(--term-fg);margin:0;border-radius:0;font-size:.76rem;line-height:1.55;max-height:460px;overflow:auto}
+.codebox .c{color:var(--term-dim)} .codebox .k{color:var(--term-cmd)}
+
+/* in-browser simulation */
+.simbar{display:flex;flex-wrap:wrap;gap:12px 20px;align-items:end}
+.simbar .grp{display:flex;flex-direction:column;gap:4px;min-width:150px}
+.simbar label{font-family:var(--f-display);font-size:var(--s-0);color:var(--muted)}
+.simbar output{font-family:var(--f-mono);font-size:var(--s-0);color:var(--ink)}
+.simbar input[type=range]{accent-color:var(--accent);width:100%}
+.simbar select{font-family:var(--f-display);font-size:var(--s-0);padding:6px 8px;border:1px solid var(--rule);border-radius:4px;background:var(--surface);color:var(--ink)}
+.simbtns{display:flex;gap:6px}
+.caches{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px}
+@media (max-width:760px){.caches{grid-template-columns:minmax(0,1fr)}}
+.cachebox{background:var(--surface);border:1px solid var(--rule);border-radius:6px;padding:14px;display:flex;flex-direction:column;gap:10px;min-width:0}
+.cachebox header{display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap}
+.cachebox h3{font-size:var(--s-1)}
+.cachebox .big{font-family:var(--f-display);font-weight:800;font-size:var(--s-4);font-variant-numeric:tabular-nums;line-height:1}
+.cachebox .sub{font-family:var(--f-display);font-size:.75rem;color:var(--muted)}
+.cachebox canvas{width:100%;display:block;max-width:100%}
+.lanes{display:grid;grid-template-columns:minmax(0,1fr);gap:6px;font-family:var(--f-mono);font-size:.76rem}
+.lane{display:grid;grid-template-columns:86px minmax(0,1fr);gap:10px;align-items:center;background:var(--surface);border:1px solid var(--rule);border-radius:5px;padding:7px 10px}
+.lane b{font-family:var(--f-display);font-size:var(--s-0)}
+.lane span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.simgrid{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:20px}
+@media (max-width:860px){.simgrid{grid-template-columns:minmax(0,1fr)}}
+.simstats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:0;border-top:1px solid var(--rule);border-bottom:1px solid var(--rule)}
+.simstats div{padding:10px 12px 10px 0;display:flex;flex-direction:column;gap:2px;min-width:0}
+.simstats div+div{padding-left:12px;border-left:1px solid var(--rule)}
+.simstats b{font-family:var(--f-display);font-size:var(--s-3);font-variant-numeric:tabular-nums}
+.simstats span{font-family:var(--f-display);font-size:.72rem;color:var(--muted)}
+@media (max-width:600px){.simstats{grid-template-columns:repeat(2,minmax(0,1fr))}.simstats div:nth-child(3){padding-left:0;border-left:0}}
+.term.small pre{max-height:270px;min-height:270px}
+</style>
+</head>
+<body>
+<header class="top"><div class="wrap">
+  <a class="brand" href="#top">Prefetching Past Readahead</a>
+  <nav class="sections" aria-label="Sections">
+    <a href="#run">See it run</a><a href="#sim">Try it</a><a href="#how">How it works</a><a href="#code">Code</a><a href="#bug">The 12.5% limit</a><a href="#results">Results</a><a href="#cost">Cost of a wrong guess</a><a href="#lessons">Lessons</a><a href="#refs">References</a>
+  </nav>
+</div></header>
+
+<main id="top">
+<section class="hero"><div class="wrap"><div class="hero-grid">
+  <div class="stack" style="gap:18px">
+    <p class="eyebrow">Operating systems project · Linux 6.8 · eBPF</p>
+    <h1>When does learned file prefetching beat Linux readahead?</h1>
+    <p class="lede">A daemon that watches which files programs open, learns the order, and loads the next one before it is asked for.</p>
+  </div>
+
+  <div class="stack" style="gap:14px">
+    <div class="maps">
+      <div class="map">
+        <header><h3>One request for the whole file</h3><span class="pct" id="pctA">12.5%</span></header>
+        <canvas id="mapA" width="640" height="400" role="img" aria-label="Residency map: 320 of 2560 pages loaded"></canvas>
+        <div class="call">posix_fadvise(fd, 0, 10 MB, WILLNEED)</div>
+      </div>
+      <div class="map">
+        <header><h3>Ten 1 MB requests</h3><span class="pct" id="pctB">100%</span></header>
+        <canvas id="mapB" width="640" height="400" role="img" aria-label="Residency map: all 2560 pages loaded"></canvas>
+        <div class="call">posix_fadvise(fd, i·1 MB, 1 MB, WILLNEED) × 10</div>
+      </div>
+    </div>
+    <div class="legend">
+      <span><span class="sw" style="background:var(--resident)"></span>page in cache</span>
+      <span><span class="sw" style="background:var(--cell)"></span>page not loaded</span>
+      <span>Each square is one 4 KB page of a 10 MB file (2,560 pages), as reported by <code>mincore()</code> 600 ms after the request.</span>
+      <button class="ghost" id="replay" type="button">Replay</button>
+    </div>
+  </div>
+
+  <div class="keys" aria-label="Key results">
+    <div><b>+29%</b><span>throughput under memory pressure</span></div>
+    <div><b>−56%</b><span>median read latency, same test</span></div>
+    <div><b>12.5%</b><span>of a file loaded by one WILLNEED call</span></div>
+    <div><b>207 ms</b><span>delay caused by two wrong guesses on a 100 MB/s disk</span></div>
+  </div>
+</div></div></section>
+
+
+<section id="run"><div class="wrap stack">
+  <p class="eyebrow">See it run</p>
+  <h2>Real terminal sessions from the test VM</h2>
+  <div class="col"><p>Captured on the Ubuntu VM the experiments ran in, in the order you would run them. Output is unedited; where a log is long, the omitted lines are marked. Press Replay to watch a session type itself out.</p></div>
+  <div class="run">
+    <ol class="steps" id="steps" role="tablist" aria-label="Terminal sessions"></ol>
+    <div class="term">
+      <div class="bar"><div class="dots" aria-hidden="true"><i></i><i></i><i></i></div><span class="host" id="termHost">sarveshkute@lima-prefetch-dev: ~/OS PROJECT</span>
+        <div class="acts"><button type="button" id="termCopy">Copy commands</button><button type="button" id="termPlay">Replay</button></div></div>
+      <pre id="termOut" tabindex="0" aria-live="off"></pre>
+      <p class="note" id="termNote"></p>
+    </div>
+  </div>
+</div></section>
+
+
+<section id="sim"><div class="wrap stack">
+  <p class="eyebrow">Try it in your browser</p>
+  <h2>The real model, a simulated page cache</h2>
+  <div class="col"><p>This runs the project's prediction model, ported line for line from <code>prefetch_model.py</code> and checked against the Python version on the same traces (72,000 predictions, identical results). Three processes read files in a repeating order. Both caches see exactly the same reads; only the right one has the daemon prefetching. The kernel and disk are simulated: a prefetch here finishes instantly, which real disks do not (see the slow-disk results).</p></div>
+  <div class="simbar">
+    <div class="simbtns"><button type="button" id="simPlay">Play</button><button type="button" class="ghost" id="simStep">Step</button><button type="button" class="ghost" id="simReset">Reset</button></div>
+    <div class="grp"><label for="simSpeed">Speed</label><select id="simSpeed"><option value="4">Slow</option><option value="20" selected>Normal</option><option value="120">Fast</option><option value="600">Very fast</option></select></div>
+    <div class="grp"><label for="simCap">Cache size <output id="simCapO">100 files</output></label><input type="range" id="simCap" min="20" max="320" step="10" value="100"></div>
+    <div class="grp"><label for="simNoise">Random reads <output id="simNoiseO">0%</output></label><input type="range" id="simNoise" min="0" max="60" step="5" value="0"></div>
+    <div class="grp"><label for="simMode">Model</label><select id="simMode"><option value="full" selected>Sequence + context</option><option value="seq">Sequence only</option></select></div>
+  </div>
+  <div class="simstats" aria-live="polite">
+    <div><b id="stAcc">0</b><span>reads so far</span></div>
+    <div><b id="stIss">0</b><span>prefetches issued</span></div>
+    <div><b id="stPrec">–</b><span>prefetches that were used</span></div>
+    <div><b id="stCtx">0</b><span>contexts the model has learned</span></div>
+  </div>
+  <div class="caches">
+    <div class="cachebox"><header><h3>Linux alone</h3><span class="sub">LRU cache, no prefetching</span></header>
+      <div><span class="big" id="hrBase">0%</span> <span class="sub">hit rate, last 300 reads</span></div>
+      <canvas id="cvBase" role="img" aria-label="Page cache without the daemon"></canvas></div>
+    <div class="cachebox"><header><h3>With the daemon</h3><span class="sub">same cache, plus prefetching</span></header>
+      <div><span class="big" id="hrPf">0%</span> <span class="sub">hit rate, last 300 reads</span></div>
+      <canvas id="cvPf" role="img" aria-label="Page cache with the daemon"></canvas></div>
+  </div>
+  <div class="legend" id="simLegend"></div>
+  <div class="simgrid">
+    <div class="stack" style="gap:10px">
+      <div class="chart"><h3>Hit rate over time (rolling 300 reads)</h3><div id="simChart"></div>
+        <div class="legend"><span><span class="sw" style="background:var(--c-base)"></span>Linux alone</span><span><span class="sw" style="background:var(--resident)"></span>with the daemon</span></div></div>
+      <div class="lanes" id="lanes"></div>
+    </div>
+    <div class="term small"><div class="bar"><div class="dots" aria-hidden="true"><i></i><i></i><i></i></div><span class="host">simulated --trace output</span></div><pre id="simLog" tabindex="0"></pre></div>
+  </div>
+</div></section>
+
+<section id="how"><div class="wrap stack">
+  <p class="eyebrow">How it works</p>
+  <h2>Trace, predict, prefetch</h2>
+  <div class="col stack" style="gap:14px">
+    <p>Linux readahead only looks inside one file, and only after a program starts reading it. Many programs repeat patterns across files: a compiler opens the same headers every build, an indexer walks the same tree every pass. The daemon learns those patterns per process and asks the kernel to load the next file early.</p>
+  </div>
+  <div class="pipe" aria-label="Data path">
+    <div class="node"><b>Applications</b><span>open · read · close</span></div><div class="arrow" aria-hidden="true">→</div>
+    <div class="node kernel"><b>eBPF tracepoints</b><span>sys_enter/exit_openat<br>sys_enter_read, close</span></div><div class="arrow" aria-hidden="true">→</div>
+    <div class="node kernel"><b>Ring buffer</b><span>pid · comm · path</span></div><div class="arrow" aria-hidden="true">→</div>
+    <div class="node"><b>Markov model</b><span>last 5 files per process + context</span></div><div class="arrow" aria-hidden="true">→</div>
+    <div class="node"><b>Actuator</b><span>top-2 · 1 MB chunks · guards</span></div><div class="arrow" aria-hidden="true">→</div>
+    <div class="node kernel"><b>Page cache</b><span>WILLNEED / DONTNEED</span></div>
+  </div>
+  <p class="muted" style="font-size:var(--s-0);font-family:var(--f-display)">Dashed boxes run in the kernel; solid boxes run in the userspace daemon.</p>
+  <div class="col stack" style="gap:14px">
+    <h3>The model</h3>
+    <p>For every suffix of the last five files a process opened, the model counts which file came next. Longer matching histories count more. Process name, time of day and file extension adjust the score.</p>
+    <div class="eq">p_seq(x) = Σ |s| · P(x | s) / Σ |s|          conf(x) = 0.6 · p_seq(x) + 0.4 · p_ctx(x)</div>
+    <p>A file with confidence of 0.5 or more is a candidate. The actuator sends at most two requests per open, skips anything prefetched in the last five seconds, and runs the system calls on worker threads so tracing never stalls.</p>
+    <h3>Cost per open event</h3>
+    <div class="tbl"><table>
+      <thead><tr><th>Step</th><th>Time</th></tr></thead>
+      <tbody>
+        <tr><td>Model update</td><td class="mono">O(W²)</td></tr>
+        <tr><td>Prediction</td><td class="mono">O(W² + W·F + M log M)</td></tr>
+        <tr><td>Dispatch</td><td class="mono">O(k)</td></tr>
+        <tr><td>Measured, model + dispatch</td><td class="mono">50–138 µs</td></tr>
+      </tbody>
+    </table></div>
+    <p class="muted" style="font-size:var(--s-0);font-family:var(--f-display)">W = 5 files of history, F = distinct successors of a context, M ≤ W·F candidates, k = 2 prefetches per event.</p>
+  </div>
+  <details>
+    <summary>Original architecture diagram</summary>
+    <img src="arch.png" alt="Original architecture: applications issue system calls, eBPF probes feed a ring buffer, a prediction pipeline scores candidates, and an actuator sends prefetch advice to the page cache.">
+  </details>
+</div></section>
+
+
+<section id="code"><div class="wrap stack">
+  <p class="eyebrow">Inside the code</p>
+  <h2>The three parts that do the work</h2>
+  <div class="col"><p>Excerpts from the repository: the eBPF probe that turns a successful <code>openat</code> into an event, the model that ranks the next file, and the prefetch call that works around the 12.5% limit.</p></div>
+  <div class="codes" id="codes"></div>
+</div></section>
+
+<section id="bug"><div class="wrap stack">
+  <p class="eyebrow">The 12.5% limit</p>
+  <h2>Why the first evaluation said “no gain”</h2>
+  <div class="col stack" style="gap:14px">
+    <p>The first measurements under memory pressure showed no throughput gain, while the daemon reported 99% prediction precision. Those two facts did not fit. Checking the cache directly with <code>mincore()</code> showed the cause: one <code>WILLNEED</code> request covering a 10 MB file loads 12.5% of it, every time. <code>readahead(2)</code> behaves the same. Split into 1 MB requests, the whole file loads.</p>
+    <p>The kernel caps how much one request reads and reports nothing. The precision counter only checked whether a predicted file was read soon after, so it could not see the shortfall.</p>
+  </div>
+  <div class="chart" style="max-width:720px">
+    <h3>Share of a 10 MB file resident 600 ms after the request (5 trials each)</h3>
+    <div id="chartWillneed"></div>
+  </div>
+</div></section>
+
+<section id="results"><div class="wrap stack">
+  <p class="eyebrow">Results</p>
+  <h2>Six settings, six configurations</h2>
+  <div class="col"><p>Each configuration ran five times (the slow-disk tests four times), with the page cache dropped and writeback settled before every run, one warm-up run discarded, and configurations interleaved so slow drift affects all of them. Every verdict gives the 95% confidence interval and the Welch's t-test p-value of the difference; with this few runs, only p &lt; 0.05 counts.</p></div>
+  <div class="tabs" role="tablist" aria-label="Test setting">
+    <button role="tab" id="tab-pressure" aria-selected="true" data-k="pressure" type="button">Memory pressure</button>
+    <button role="tab" id="tab-noise" aria-selected="false" data-k="noise" type="button">30% random access</button>
+    <button role="tab" id="tab-slow10" aria-selected="false" data-k="slow10" type="button">Slow disk, busy</button>
+    <button role="tab" id="tab-slow100" aria-selected="false" data-k="slow100" type="button">Slow disk, idle gaps</button>
+    <button role="tab" id="tab-policies" aria-selected="false" data-k="policies" type="button">New policies</button>
+    <button role="tab" id="tab-vm2" aria-selected="false" data-k="vm2" type="button">Second machine</button>
+  </div>
+  <p class="col" id="setting"></p>
+  <div class="legend" id="cfgLegend"></div>
+  <div class="charts" id="charts"></div>
+  <p class="verdict" id="verdict"></p>
+  <details><summary>Show the numbers as a table</summary><div class="tbl" style="margin-top:12px"><table id="resTable"></table></div></details>
+  <h3 style="margin-top:28px">Real programs: where it does not help</h3>
+  <div class="col"><p>Three real programs ran together on the PostgreSQL source tree: a build of two of its libraries, a <code>grep</code> and <code>git grep</code> search, and a Python start-up importing twenty modules. Five runs of 60 s each, with no memory limit and inside a cgroup of 400 MB and 300 MB that also holds the daemon. Mean time per operation:</p></div>
+  <div class="tbl"><table id="appsTable"></table></div>
+  <p class="verdict bad" id="appsVerdict"></p>
+</div></section>
+
+<section id="cost"><div class="wrap stack">
+  <p class="eyebrow">Cost of a wrong guess</p>
+  <h2>A wrong prefetch delays the file you actually need</h2>
+  <div class="col stack" style="gap:14px">
+    <p>A micro-benchmark prefetched two wrong 10 MB files and then read the one that was needed. On a disk capped at 100 MB/s the extra delay matched a simple formula: the wrong bytes divided by the disk bandwidth, minus the time the program spends before the read.</p>
+    <div class="eq">penalty ≈ max(0, k · S / B − g)</div>
+  </div>
+  <div class="calc">
+    <div class="controls" aria-label="Penalty calculator">
+      <div class="ctl"><label for="k">Wrong files per guess (k)</label><output id="ko" for="k"></output><input type="range" id="k" min="1" max="4" step="1" value="2"></div>
+      <div class="ctl"><label for="sz">File size (S)</label><output id="szo" for="sz"></output><input type="range" id="sz" min="1" max="64" step="1" value="10"></div>
+      <div class="ctl"><label for="bw">Disk bandwidth (B)</label><output id="bwo" for="bw"></output><input type="range" id="bw" min="25" max="2000" step="25" value="100"></div>
+      <div class="ctl"><label for="g">Think time before the read (g)</label><output id="go" for="g"></output><input type="range" id="g" min="0" max="300" step="5" value="0"></div>
+      <div class="ctl"><label for="sv">Time saved by a right guess</label><output id="svo" for="sv"></output><input type="range" id="sv" min="5" max="200" step="1" value="42"></div>
+      <div class="readout">
+        <div><b id="penOut">200 ms</b><span>delay per wrong guess</span></div>
+        <div><b id="beOut">83%</b><span>precision needed to break even</span></div>
+      </div>
+      <p class="muted" style="font-size:.75rem;font-family:var(--f-display)">Defaults are the measured 100 MB/s case: a right guess cut the read from 48.7 ms to 6.5 ms. Break-even treats each guess as all-or-nothing, so it is an estimate.</p>
+      <button class="ghost" id="resetCalc" type="button">Reset to measured values</button>
+    </div>
+    <div class="chart">
+      <h3>Measured delay against think time (20 trials per point)</h3>
+      <div id="chartPenalty"></div>
+      <div class="legend" style="margin-top:4px">
+        <span><span class="sw" style="background:var(--c-daemon)"></span>measured, 100 MB/s</span>
+        <span><span class="sw" style="background:var(--c-ra)"></span>measured, uncapped</span>
+        <span><span class="sw" style="background:var(--muted)"></span>formula with your settings</span>
+      </div>
+    </div>
+  </div>
+  <div class="col"><p id="precNote"></p></div>
+</div></section>
+
+<section id="lessons"><div class="wrap stack">
+  <p class="eyebrow">Lessons</p>
+  <h2>What held up, and what did not</h2>
+  <div class="col stack" style="gap:16px">
+    <p><strong>It helps only when three things are true at once:</strong> the access order is predictable, the working set is bigger than the cache, and the disk has spare capacity. Take one away and the gain shrinks or turns into a tail-latency cost.</p>
+    <p><strong>Check the kernel, not your own counters.</strong> Two explanations in the first report, heavy userspace overhead and “eviction blindness”, fell apart once the harness was fixed and the 12.5% limit was found.</p>
+    <p><strong>The harness changed the answer more than the model did.</strong> Without waiting for writeback, the same configuration scored 26.8% in its first run and about 72% after.</p>
+    <h3>Limitations</h3>
+    <ul class="plain">
+      <li>Four or five runs of 40–60 s per configuration, on virtual machines on one Mac. Effects below about 5% are within the noise unless the p-value says otherwise.</li>
+      <li>The gains come from a synthetic, periodic workload of 10 MB files. On real programs whose files fit in memory, the daemon only adds cost.</li>
+      <li>The slow disk is a cgroup bandwidth cap, not slow hardware.</li>
+      <li>The adaptive I/O limit protects the tail on a busy disk only by switching prefetching off; its target needs to be set from the disk's own stall level.</li>
+      <li>Prediction is per whole file. Files opened by relative path cannot be prefetched.</li>
+    </ul>
+    <h3>Reproduce</h3>
+    <div class="code-head"><span class="muted" style="font-size:var(--s-0);font-family:var(--f-display)">Inside a Linux VM with BCC installed, as root</span><button class="ghost" id="copyCmd" type="button">Copy</button></div>
+    <pre id="cmds">python3 -m unittest discover -s tests
+python3 eval_runner.py --baselines none,ra-tuned,full,full-gate --scale 3.5 --iterations 5 --ballast-gb 4
+python3 eval_runner.py --baselines none,ra-tuned,full,full-gate --scale 3.5 --skip-setup --noise 0.3 --ballast-gb 4
+python3 willneed_probe.py
+python3 misprediction_cost.py</pre>
+    <p class="muted" style="font-size:var(--s-0);font-family:var(--f-display)">Code and raw logs: <a href="https://github.com/sarveshsuhaskute/ai-file-prefetcher-" target="_blank" rel="noopener">github.com/sarveshsuhaskute/ai-file-prefetcher-</a></p>
+  </div>
+</div></section>
+
+<section id="refs"><div class="wrap stack">
+  <p class="eyebrow">References</p>
+  <ol class="refs col">
+    <li>J. Griffioen and R. Appleton, “Reducing file system latency using a predictive approach,” USENIX Summer Technical Conf., 1994.</li>
+    <li>T. M. Kroeger and D. D. E. Long, “Predicting file system actions from prior events,” USENIX Annual Technical Conf., 1996, pp. 319–328.</li>
+    <li>R. H. Patterson, G. A. Gibson, E. Ginting, D. Stodolsky, and J. Zelenka, “Informed prefetching and caching,” ACM SOSP, 1995, pp. 79–95.</li>
+    <li>P. Cao, E. W. Felten, A. R. Karlin, and K. Li, “A study of integrated prefetching and caching strategies,” ACM SIGMETRICS, 1995, pp. 188–197.</li>
+    <li>Z. Li, Z. Chen, S. M. Srinivasan, and Y. Zhou, “C-Miner: Mining block correlations in storage systems,” USENIX FAST, 2004, pp. 173–186.</li>
+    <li>R. Agrawal and R. Srikant, “Mining sequential patterns,” IEEE ICDE, 1995, pp. 3–14.</li>
+    <li>J. Pei et al., “Mining sequential patterns by pattern-growth: The PrefixSpan approach,” IEEE TKDE, vol. 16, no. 11, pp. 1424–1440, 2004.</li>
+    <li>N. Megiddo and D. S. Modha, “ARC: A self-tuning, low overhead replacement cache,” USENIX FAST, 2003, pp. 115–130.</li>
+    <li>M. Hashemi et al., “Learning memory access patterns,” ICML, PMLR 80, 2018, pp. 1919–1928.</li>
+    <li>B. Esfahbod, “Preload — An adaptive prefetching daemon,” M.Sc. thesis, Univ. of Toronto, 2006.</li>
+    <li>F. Wu, H. Xi, and C. Xu, “On the design of a new Linux readahead framework,” ACM SIGOPS OSR, vol. 42, no. 5, 2008.</li>
+    <li>G. Savva and H. Herodotou, “Adaptive data prefetching for file storage systems using online machine learning,” Big Data and Cognitive Computing, vol. 10, no. 1, art. 28, 2026.</li>
+    <li>X. Cao, S. Patel, S. Y. Lim, X. Han, and T. Pasquier, “FetchBPF: Customizable prefetching policies in Linux with eBPF,” USENIX ATC, 2024, pp. 369–378.</li>
+    <li>T. Zussman, I. Zarkadas, et al., “cache_ext: Customizing the page cache with eBPF,” ACM SOSP, 2025.</li>
+    <li>Z. Qi, “LearnedCache: eBPF-integrated perceptron-based eviction policies for the Linux page cache,” arXiv:2605.26168, 2026.</li>
+    <li>B. Gbadamosi et al., “The eBPF runtime in the Linux kernel,” arXiv:2410.00026, 2024.</li>
+    <li>B. Gregg, BPF Performance Tools, Addison-Wesley, 2019.</li>
+    <li>IO Visor Project, BCC, github.com/iovisor/bcc.</li>
+    <li>Linux man-pages: posix_fadvise(2), readahead(2), mincore(2).</li>
+    <li>Z. Song, D. S. Berger, K. Li, and W. Lloyd, “Learning relaxed Belady for content distribution network caching,” USENIX NSDI, 2020, pp. 529–544.</li>
+    <li>S. Psomadakis et al., “SnapBPF: Exploiting eBPF for serverless snapshot prefetching,” ACM HotStorage, 2025, pp. 9–16.</li>
+    <li>Linux kernel documentation, “PSI — Pressure Stall Information.”</li>
+  </ol>
+</div></section>
+</main>
+<footer><div class="wrap">Linux 6.8 · Ubuntu 24.04 VM · 4 vCPU · 11.9 GB RAM · all figures from the project's raw logs.</div></footer>
+<div class="tip" id="tip" hidden></div>
+<script>const DATA={"pressure":{"1":{"hit":13.35,"sd":0.67,"n":5,"reads":5534,"p50":9.34,"p95":19.11,"p99":27.48,"runs_reads":[5669,5527,5535,5495,5445]},"7":{"hit":13.46,"sd":0.74,"n":5,"reads":5529,"p50":9.05,"p95":22.2,"p99":35.22,"runs_reads":[5621,5577,5526,5448,5472]},"4":{"hit":70.03,"sd":0.76,"n":5,"reads":7145,"p50":4.13,"p95":14.76,"p99":25.18,"runs_reads":[7059,7111,7158,7210,7187],"issued":5028,"useful":4952,"us_per_event":49.8},"9":{"hit":69.72,"sd":0.67,"n":5,"reads":7204,"p50":3.94,"p95":14.72,"p99":25.11,"runs_reads":[7174,7256,7182,7187,7221],"issued":5040,"useful":5035,"us_per_event":58.5}},"noise":{"1":{"hit":42.47,"sd":2.39,"n":5,"reads":6520,"p50":6.04,"p95":15.09,"p99":24.48,"runs_reads":[6731,6766,6390,6334,6379]},"7":{"hit":44.04,"sd":0.96,"n":5,"reads":6355,"p50":6.74,"p95":16.83,"p99":31.95,"runs_reads":[6561,6586,6428,6016,6182]},"4":{"hit":53.98,"sd":0.38,"n":5,"reads":6633,"p50":5.36,"p95":16.54,"p99":28.05,"runs_reads":[6840,6765,6678,6563,6317],"issued":3947,"useful":1670,"us_per_event":106.8},"9":{"hit":49.82,"sd":0.69,"n":5,"reads":6534,"p50":5.74,"p95":16.7,"p99":27.67,"runs_reads":[6786,6678,6479,6524,6201],"issued":2531,"useful":1226,"us_per_event":94.6}},"slowdisk":{"1":{"hit":1.14,"sd":0.19,"n":4,"reads":2319,"p50":79.48,"p95":94.41,"p99":97.76,"runs_reads":[2315,2317,2320,2325]},"4":{"hit":1.21,"sd":0.38,"n":4,"reads":2311,"p50":80.1,"p95":93.94,"p99":97.54,"runs_reads":[2314,2307,2311,2311],"issued":26,"useful":25,"us_per_event":104.0},"5":{"hit":43.84,"sd":1.65,"n":4,"reads":2443,"p50":73.48,"p95":167.45,"p99":285.62,"runs_reads":[2385,2386,2547,2455],"issued":1924,"useful":1910,"us_per_event":137.7}},"prefix":{"1":{"hit":12.23,"sd":0.42,"n":5,"reads":5379,"p50":9.95,"p95":20.37,"p99":27.7,"runs_reads":[5283,5369,5294,5518,5433]},"6":{"hit":12.38,"sd":0.31,"n":5,"reads":5377,"p50":10.1,"p95":20.69,"p99":29.9,"runs_reads":[5334,5378,5418,5353,5402],"us_per_event":28.9},"4":{"hit":13.08,"sd":0.65,"n":5,"reads":5430,"p50":9.78,"p95":19.86,"p99":27.36,"runs_reads":[5379,5480,5586,5478,5226],"issued":3,"useful":2,"us_per_event":39.8},"5":{"hit":17.77,"sd":4.68,"n":5,"reads":4508,"p50":11.21,"p95":21.14,"p99":29.95,"runs_reads":[5256,5241,5299,5128,1617],"issued":571,"useful":566,"us_per_event":44.4}},"mispred":{"uncapped":{"pen":{"0":0.8,"25":0.11,"50":0.76,"100":-0.14,"200":0.41},"none":3.83,"right":1.29,"load":4.39},"cap400":{"pen":{"0":18.42,"25":-0.48,"50":0.45,"100":-1.19,"200":7.53},"none":4.07,"right":1.53,"load":4.73},"cap100":{"pen":{"0":206.64,"25":178.45,"50":152.0,"100":104.21,"200":4.01},"none":48.7,"right":6.46,"load":49.0}},"willneed":[{"label":"posix_fadvise|whole file","chunked":false,"resident":0.125},{"label":"readahead(2)|whole file","chunked":false,"resident":0.125},{"label":"posix_fadvise|1 MB chunks","chunked":true,"resident":1.0},{"label":"readahead(2)|1 MB chunks","chunked":true,"resident":1.0}],"kernel":"6.8.0-147-generic","slow10":{"1":{"hit":34.37,"sd":0.85,"n":4,"reads":3472,"p50":9.48,"p95":92.2,"p99":95.9},"4":{"hit":58.45,"sd":0.37,"n":4,"reads":3468,"p50":5.9,"p95":95.93,"p99":221.42,"useful":2289,"issued":2297},"10":{"hit":34.95,"sd":0.12,"n":4,"reads":3493,"p50":9.31,"p95":92.0,"p99":96.14,"useful":51,"issued":140}},"slow100":{"1":{"hit":25.51,"sd":1.27,"n":4,"reads":1588,"p50":9.84,"p95":14.05,"p99":15.9},"4":{"hit":74.67,"sd":0.54,"n":4,"reads":1600,"p50":8.94,"p95":14.02,"p99":15.55,"useful":1170,"issued":1175},"10":{"hit":74.49,"sd":0.36,"n":4,"reads":1588,"p50":9.79,"p95":14.39,"p99":16.17,"useful":1168,"issued":1176}},"policies":{"1":{"hit":13.71,"sd":0.94,"n":5,"reads":5589,"p50":9.11,"p95":18.86,"p99":27.27},"4":{"hit":69.71,"sd":0.29,"n":5,"reads":7355,"p50":3.69,"p95":13.62,"p99":20.31,"useful":4962,"issued":4966},"11":{"hit":64.62,"sd":1.03,"n":5,"reads":7727,"p50":3.62,"p95":11.46,"p99":18.09,"useful":5036,"issued":5100},"10":{"hit":69.75,"sd":0.26,"n":5,"reads":7296,"p50":3.87,"p95":13.75,"p99":20.35,"useful":4942,"issued":4946}},"apps":{"unlimited":{"1":{"python":57.8,"search":62.8,"compile":11261.0},"4":{"python":70.3,"search":69.8,"compile":12358.0}},"mem400":{"1":{"python":57.9,"search":63.7,"compile":11297.0},"4":{"python":69.7,"search":77.4,"compile":12579.5}},"mem300":{"1":{"python":58.6,"search":63.6,"compile":11419.0},"4":{"python":84.7,"search":133.1,"compile":14067.2}}},"sig":{"v6_pressure":{"vs_none":{"7":{"throughput (per run)":[-0.1,-2.15,1.96,0.9152685820895617],"median latency":[-3.06,-6.68,0.56,0.08570060231923883],"p99 latency":[28.13,15.4,40.87,0.0026212498331440277]},"4":{"throughput (per run)":[29.11,27.16,31.06,2.075523353688969e-09],"median latency":[-55.74,-59.51,-51.97,4.995041727779696e-09],"p99 latency":[-8.39,-21.15,4.37,0.14801444610637085]},"9":{"throughput (per run)":[30.17,28.34,32.01,7.07625527927812e-08],"median latency":[-57.84,-60.23,-55.44,2.128236884064251e-09],"p99 latency":[-8.62,-21.46,4.21,0.15121720654934243]}},"vs_full":{"9":{"throughput (per run)":[0.83,-0.23,1.88,0.1044657904957678],"median latency":[-4.74,-12.95,3.47,0.19599287742250998],"p99 latency":[-0.25,-7.48,6.97,0.9342777895502037]}}},"v6_noise":{"vs_none":{"7":{"throughput (per run)":[-2.54,-7.7,2.63,0.28885918077424255],"median latency":[11.56,-5.96,29.08,0.16478422072546917],"p99 latency":[30.49,5.58,55.4,0.02556108577283041]},"4":{"throughput (per run)":[1.73,-2.91,6.36,0.41523315555148566],"median latency":[-11.3,-25.24,2.65,0.09847498313252588],"p99 latency":[14.57,-10.33,39.48,0.19358780503656053]},"9":{"throughput (per run)":[0.21,-4.64,5.05,0.923301833679713],"median latency":[-4.87,-19.03,9.29,0.4501388573076661],"p99 latency":[13.01,-11.95,37.96,0.2439919848981269]}},"vs_full":{"9":{"throughput (per run)":[-1.49,-6.2,3.21,0.4849032724037948],"median latency":[7.24,-7.51,22.0,0.29016624543580627],"p99 latency":[-1.37,-11.96,9.23,0.7724302511194607]}}},"v8_slowdisk_think10":{"vs_none":{"4":{"throughput (per run)":[-0.12,-1.82,1.59,0.8617604340430773],"median latency":[-37.76,-48.4,-27.13,0.0013199552714866268],"p99 latency":[130.89,71.89,189.88,0.005836444605784509]},"10":{"throughput (per run)":[0.61,-1.17,2.39,0.3636514363856884],"median latency":[-1.77,-11.9,8.37,0.6575700069428827],"p99 latency":[0.25,-1.12,1.61,0.652749160644382]}},"vs_full":{"10":{"throughput (per run)":[0.73,-0.02,1.48,0.05426591021684069],"median latency":[57.84,50.4,65.28,5.258257601179043e-05],"p99 latency":[-56.58,-82.12,-31.04,0.005854967140253899]}}},"v8_slowdisk_think100":{"vs_none":{"4":{"throughput (per run)":[0.69,-3.34,4.72,0.6878568993042593],"median latency":[-9.22,-53.85,35.41,0.6280912156773285],"p99 latency":[-2.14,-32.99,28.71,0.8519731857157677]},"10":{"throughput (per run)":[-0.06,-3.77,3.65,0.966990460179508],"median latency":[-0.51,-43.66,42.65,0.9773776885248556],"p99 latency":[1.73,-30.34,33.8,0.8759666581462308]}},"vs_full":{"10":{"throughput (per run)":[-0.75,-4.09,2.59,0.5945033669544859],"median latency":[9.6,-30.67,49.86,0.5794831575072239],"p99 latency":[3.95,-6.4,14.31,0.3379787662163476]}}},"v8_pressure":{"vs_none":{"4":{"throughput (per run)":[31.6,28.52,34.68,6.6002987244629655e-06],"median latency":[-59.43,-64.86,-54.01,3.512197420858019e-06],"p99 latency":[-25.52,-38.35,-12.69,0.004039890036460788]},"11":{"throughput (per run)":[38.26,34.58,41.94,9.737843211916204e-09],"median latency":[-60.22,-66.22,-54.23,1.7614955504083367e-08],"p99 latency":[-33.64,-46.51,-20.78,0.000803333726824836]},"10":{"throughput (per run)":[30.55,27.49,33.6,3.739836849884093e-06],"median latency":[-57.48,-62.87,-52.09,7.159088313096938e-07],"p99 latency":[-25.37,-38.26,-12.48,0.004686109348827016]}},"vs_full":{"11":{"throughput (per run)":[5.06,2.67,7.45,0.003926770603356918],"median latency":[-1.95,-13.26,9.36,0.6680824143303434],"p99 latency":[-10.91,-19.23,-2.59,0.017388594956147394]},"10":{"throughput (per run)":[-0.8,-1.41,-0.19,0.01800599307485537],"median latency":[4.82,-0.65,10.29,0.07449363632409227],"p99 latency":[0.2,-5.48,5.87,0.9374848354673795]}}},"v7_apps_unlimited":{"vs_none":{"4":{"throughput (per run)":[-13.66,-21.34,-5.97,0.006506872432927585],"median latency":[12.52,8.25,16.79,0.0003413015741004326],"p99 latency":[56.34,-34.1,146.79,0.1610855490420507],"compile time per op":[9.74,-0.2,19.68,0.053029235890698585],"python time per op":[21.6,7.01,36.19,0.014268574584007113],"search time per op":[11.11,2.91,19.31,0.01800762908352215]}}},"v7_apps_mem400":{"vs_none":{"4":{"throughput (per run)":[-17.35,-21.32,-13.38,0.00020650663588412603],"median latency":[14.8,10.5,19.09,0.0005971423300006191],"p99 latency":[77.38,50.9,103.86,0.0003708388234977558],"compile time per op":[11.35,8.47,14.24,7.322470879787741e-05],"python time per op":[20.41,16.1,24.72,4.377358576711809e-05],"search time per op":[21.43,17.98,24.88,6.1240879797090115e-06]}}},"v7_apps_mem300":{"vs_none":{"4":{"throughput (per run)":[-40.97,-44.12,-37.83,4.2423343568434794e-08],"median latency":[48.34,43.46,53.23,1.353209549228669e-07],"p99 latency":[119.72,101.44,138.0,6.544090882127773e-07],"compile time per op":[23.19,20.26,26.13,9.76697258623718e-07],"python time per op":[44.52,40.37,48.67,8.079931611464672e-09],"search time per op":[109.21,101.02,117.4,3.93103231645641e-07]}}},"vm2_pressure":{"vs_none":{"4":{"throughput (per run)":[0.6,-1.01,2.2,0.4130421962610754],"median latency":[-4.89,-10.66,0.87,0.08197155551105187],"p99 latency":[-0.57,-15.92,14.78,0.9303597481812551]},"9":{"throughput (per run)":[-0.41,-2.04,1.22,0.5755034486520358],"median latency":[-1.74,-7.98,4.5,0.5352490932382995],"p99 latency":[0.66,-14.91,16.24,0.92165055662868]},"11":{"throughput (per run)":[6.52,3.44,9.6,0.002199869503868314],"median latency":[-13.76,-19.59,-7.92,0.0011144901076107119],"p99 latency":[6.47,-19.64,32.58,0.5721630818417592]},"10":{"throughput (per run)":[0.98,-0.62,2.58,0.1922274073381247],"median latency":[-4.3,-10.14,1.55,0.12333747070361162],"p99 latency":[-3.3,-23.53,16.94,0.7154622574150755]}},"vs_full":{"9":{"throughput (per run)":[-1.0,-2.4,0.4,0.13879857587892774],"median latency":[3.32,-1.49,8.12,0.1433726282441531],"p99 latency":[1.24,-9.0,11.48,0.7861603342762492]},"11":{"throughput (per run)":[5.89,2.85,8.94,0.004088744649514145],"median latency":[-9.32,-12.89,-5.74,0.0003677002007245982],"p99 latency":[7.08,-18.6,32.76,0.505328015488598]},"10":{"throughput (per run)":[0.38,-0.97,1.74,0.5318416296134785],"median latency":[0.63,-3.0,4.26,0.6973673579315438],"p99 latency":[-2.74,-21.19,15.7,0.7228842402447215]}}}},"vm2":{"1":{"hit":39.33,"sd":0.08,"n":5,"reads":8029,"p50":3.68,"p95":7.39,"p99":10.85},"4":{"hit":61.52,"sd":0.19,"n":5,"reads":8076,"p50":3.5,"p95":7.16,"p99":10.79,"useful":3114,"issued":3119},"9":{"hit":61.62,"sd":0.11,"n":5,"reads":7996,"p50":3.61,"p95":7.54,"p99":10.92,"useful":3069,"issued":3071},"11":{"hit":32.03,"sd":1.73,"n":5,"reads":8552,"p50":3.17,"p95":6.83,"p99":11.55,"useful":2713,"issued":2715},"10":{"hit":61.76,"sd":0.27,"n":5,"reads":8107,"p50":3.52,"p95":6.88,"p99":10.49,"useful":3082,"issued":3086}}};</script>
+<script>const SESSIONS={"sessions": [{"id": "env", "title": "Environment", "note": "The Lima VM all experiments ran in.", "text": "$ uname -srm\nLinux 6.8.0-147-generic aarch64\n\n$ lsb_release -ds\nUbuntu 24.04.5 LTS\n\n$ nproc && free -h | head -2\n4\n               total        used        free      shared  buff/cache   available\nMem:            11Gi       439Mi        11Gi       1.0Mi       299Mi        11Gi\n\n$ python3 -c 'import bcc; print(\"bcc\", bcc.__version__)'\nbcc 0.29.1\n\n$ cat /sys/block/vda/queue/read_ahead_kb\n128"}, {"id": "tests", "title": "Unit tests", "note": "Model and actuator tests, also run by CI on every push.", "text": "$ python3 -m unittest discover -s tests -v\ntest_cooldown_dedupes (test_prefetch.ActuatorTests.test_cooldown_dedupes) ... ok\ntest_gate_off_by_default (test_prefetch.ActuatorTests.test_gate_off_by_default) ... ok\ntest_inflight_byte_cap (test_prefetch.ActuatorTests.test_inflight_byte_cap) ... ok\ntest_meminfo_parsing (test_prefetch.ActuatorTests.test_meminfo_parsing) ... ok\ntest_precision_gate_raises_threshold (test_prefetch.ActuatorTests.test_precision_gate_raises_threshold) ... ok\ntest_precision_tracker (test_prefetch.ActuatorTests.test_precision_tracker) ... ok\ntest_prefetches_top_k_above_threshold (test_prefetch.ActuatorTests.test_prefetches_top_k_above_threshold) ... ok\ntest_pressure_throttles_and_reclaims (test_prefetch.ActuatorTests.test_pressure_throttles_and_reclaims) ... ok\ntest_psi_parsing_and_threshold (test_prefetch.ActuatorTests.test_psi_parsing_and_threshold) ... ok\ntest_queue_cap (test_prefetch.ActuatorTests.test_queue_cap) ... ok\ntest_reclaim_rate_signal (test_prefetch.ActuatorTests.test_reclaim_rate_signal) ... ok\ntest_reclaim_signal_off_by_default (test_prefetch.ActuatorTests.test_reclaim_signal_off_by_default) ... ok\ntest_sweep_counts_stale_as_misses (test_prefetch.ActuatorTests.test_sweep_counts_stale_as_misses) ... ok\ntest_willneed_is_chunked (test_prefetch.FadviseTests.test_willneed_is_chunked) ... ok\ntest_full_mode_uses_context (test_prefetch.ModelTests.test_full_mode_uses_context) ... ok\ntest_json_roundtrip (test_prefetch.ModelTests.test_json_roundtrip) ... ok\ntest_learns_cycle (test_prefetch.ModelTests.test_learns_cycle) ... ok\ntest_pid_table_bounded (test_prefetch.ModelTests.test_pid_table_bounded) ... ok\ntest_pids_are_isolated (test_prefetch.ModelTests.test_pids_are_isolated) ... ok\ntest_prune_bounds_memory (test_prefetch.ModelTests.test_prune_bounds_memory) ... ok\ntest_static_mode_does_not_learn (test_prefetch.ModelTests.test_static_mode_does_not_learn) ... ok\ntest_top_k_and_min_conf (test_prefetch.ModelTests.test_top_k_and_min_conf) ... ok\n\n----------------------------------------------------------------------\nRan 22 tests in 0.031s\n\nOK"}, {"id": "setup", "title": "Create test data", "note": "A small 1.2 GB set for this demo; the experiments use 14 GB.", "text": "$ sudo python3 workload.py --setup --scale 0.3\nCreating 120 test files (1.2 GB)...\n\n$ ls /tmp/*.dat | wc -l && du -ch /tmp/*.dat | tail -1\n120\n1.2G\ttotal"}, {"id": "daemon", "title": "Daemon, live trace", "note": "Every open, its prediction and the prefetch decision. Background tools appear too, because the daemon traces the whole system.", "text": "$ sudo python3 -u prefetch_daemon.py --mode full --trace\nDaemon PID: 2477\n[Daemon] Listening for file opens... (Ctrl+C to stop)\n20:59:00.071 open pid=2435   capture.sh bpf.txt              | (learning)\n20:59:00.073 open pid=2478   bash       gconv-modules.cache  | (learning)\n20:59:00.074 open pid=2481   head       gconv-modules.cache  | (learning)\n20:59:00.075 open pid=2480   grep       gconv-modules.cache  | (learning)\n20:59:00.076 open pid=2479   sudo       gconv-modules.cache  | (learning)\n20:59:00.080 open pid=311    systemd-journal 364db1643cc5458db3e240b7cdb5eed1 | (learning)\n20:59:00.082 open pid=2482   bpftool    gconv-modules.cache  | (learning)\n20:59:00.082 open pid=2482   bpftool    bpftool              | (learning)\n20:59:00.083 open pid=2483   uname      gconv-modules.cache  | bpftool 0.73 -> WILLNEED\n20:59:00.084 open pid=2484   basename   gconv-modules.cache  | bpftool 0.73 -> recently prefetched\n20:59:00.090 open pid=2435   capture.sh bpf.txt              | bpf.txt 1.00 -> WILLNEED\n20:59:00.091 open pid=2486   bash       gconv-modules.cache  | bpftool 0.73 -> recently prefetched\n\u00b7\u00b7\u00b7 1,115 lines omitted: the model learns each process's order \u00b7\u00b7\u00b7\n20:59:05.804 open pid=2498   processor  processor_4.dat      | processor_5.dat 1.00 -> recently prefetched\n20:59:05.804 open pid=2496   builder    builder_28.dat       | builder_29.dat 1.00 -> recently prefetched\n20:59:05.821 open pid=2497   logger     tailer_17.dat        | tailer_18.dat 1.00 -> recently prefetched\n20:59:05.821 open pid=2496   builder    builder_29.dat       | builder_0.dat 1.00 -> recently prefetched\n20:59:05.822 open pid=2498   processor  processor_5.dat      | processor_6.dat 1.00 -> recently prefetched\n20:59:05.838 open pid=2497   logger     tailer_18.dat        | tailer_19.dat 1.00 -> recently prefetched\n20:59:05.838 open pid=2496   builder    builder_0.dat        | builder_1.dat 1.00 -> WILLNEED\n20:59:05.839 open pid=2498   processor  processor_6.dat      | processor_7.dat 1.00 -> recently prefetched\n20:59:05.855 open pid=2496   builder    builder_1.dat        | builder_2.dat 1.00 -> WILLNEED\n20:59:05.855 open pid=2497   logger     tailer_19.dat        | tailer_20.dat 1.00 -> recently prefetched\n20:59:05.856 open pid=2498   processor  processor_7.dat      | processor_8.dat 1.00 -> recently prefetched\n20:59:05.857 read pid=2496   builder    builder_1.dat        | hit: prefetched 18 ms earlier\n20:59:05.871 open pid=2497   logger     tailer_20.dat        | tailer_21.dat 1.00 -> recently prefetched\n20:59:05.871 open pid=2498   processor  processor_8.dat      | processor_9.dat 1.00 -> recently prefetched\n20:59:05.872 open pid=2496   builder    builder_2.dat        | builder_3.dat 1.00 -> WILLNEED\n20:59:05.872 read pid=2496   builder    builder_2.dat        | hit: prefetched 17 ms earlier\n20:59:05.887 open pid=2497   logger     tailer_21.dat        | tailer_22.dat 1.00 -> recently prefetched\n20:59:05.887 open pid=2498   processor  processor_9.dat      | processor_10.dat 1.00 -> recently prefetched\n20:59:05.887 open pid=2496   builder    builder_3.dat        | builder_4.dat 1.00 -> WILLNEED\n20:59:05.888 read pid=2496   builder    builder_3.dat        | hit: prefetched 16 ms earlier\n20:59:05.903 open pid=2497   logger     tailer_22.dat        | tailer_23.dat 1.00 -> recently prefetched\n20:59:05.903 open pid=2498   processor  processor_10.dat     | processor_11.dat 1.00 -> recently prefetched\n20:59:05.903 open pid=2496   builder    builder_4.dat        | builder_5.dat 1.00 -> WILLNEED\n20:59:05.904 read pid=2496   builder    builder_4.dat        | hit: prefetched 16 ms earlier\n\u00b7\u00b7\u00b7 1,246 lines omitted \u00b7\u00b7\u00b7\n^C\nModel saved to /tmp/demo_model.json\n\n[Precision Stats] Useful Prefetches: 271 / 278 (97.5%)\n[Precision Stats] Total DONTNEED Evictions: 0\n[Actuator] {'issued': 278, 'throttled_mem': 0, 'deduped': 1694, 'dropped_queue': 0, 'dropped_inflight': 0}\n[Overhead] Avg model+dispatch time per open event: 100.5 us (2126 events)\n[Overhead] Max RSS (RAM): 171840 KB\n[Overhead] CPU Time: User 0.85s, Sys 0.17s"}, {"id": "bpf", "title": "BPF programs in the kernel", "note": "Captured while the daemon was running: its four programs attached to syscall tracepoints.", "text": "$ sudo bpftool prog show 2>/dev/null | grep -A2 tracepoint | head -16 || echo bpftool not installed\n27: tracepoint  name lima_ticker  tag d50ea6079025dc00\n\tloaded_at 2026-10-21T20:46:50+0530  uid 0\n\txlated 104B  jited 200B  memlock 4096B  map_ids 5\n--\n61: tracepoint  name trace_enter_openat  tag 8dabc805dd6377ac  gpl\n\tloaded_at 2026-10-21T20:58:52+0530  uid 0\n\txlated 1712B  jited 1176B  memlock 4096B  map_ids 13\n--\n62: tracepoint  name trace_exit_openat  tag 9cf31c718c9ce18a  gpl\n\tloaded_at 2026-10-21T20:58:52+0530  uid 0\n\txlated 4536B  jited 2520B  memlock 8192B  map_ids 13,12,14\n--\n63: tracepoint  name trace_enter_read  tag a193368ea89a57ca  gpl\n\tloaded_at 2026-10-21T20:58:52+0530  uid 0\n\txlated 4384B  jited 2400B  memlock 8192B  map_ids 12,14\n--\n\n$ sudo grep -E \"syscalls:sys_(enter|exit)_(openat|read|close)$\" /sys/kernel/tracing/available_events\nsyscalls:sys_exit_close\nsyscalls:sys_enter_close\nsyscalls:sys_exit_openat\nsyscalls:sys_enter_openat\nsyscalls:sys_exit_read\nsyscalls:sys_enter_read"}, {"id": "workload", "title": "Run the workload", "note": "Three processes reading files in a repeating order while the daemon traced them.", "text": "$ sudo python3 workload.py 12 --scale 0.3\n--- TIME SERIES HIT RATE ---\n[0s - 5s]: 100.00% (Reads: 873)\n[5s - 10s]: 100.00% (Reads: 858)\n[10s - 15s]: 100.00% (Reads: 342)\nRAW DATA -> Total Hits: 2073.0, Total Reads: 2073\nOverall Cache Hit Rate: 100.00% (Total Reads: 2073)\nRead Latency ms: mean=5.41 p50=5.63 p95=6.48 p99=7.44"}, {"id": "probe", "title": "The 12.5% probe", "note": "How much of a 10 MB file one prefetch request loads.", "text": "$ sudo python3 willneed_probe.py --trials 5 --out /tmp/probe.json\nposix_fadvise|whole file     resident  12.5%  (min 12.5, max 12.5)\nreadahead(2)|whole file      resident  12.5%  (min 12.5, max 12.5)\nposix_fadvise|1 MB chunks    resident 100.0%  (min 100.0, max 100.0)\nreadahead(2)|1 MB chunks     resident 100.0%  (min 100.0, max 100.0)\nwrote /tmp/probe.json"}, {"id": "mispred", "title": "Misprediction benchmark", "note": "Disk capped at 100 MB/s with a cgroup. E4 is the delay after two wrong prefetches.", "text": "$ sudo systemd-run --scope -q -p IOReadBandwidthMax=\"/dev/vda 100M\" python3 misprediction_cost.py --trials 5 --gaps-ms 0,100,200\n{\n  \"file_mb\": 10.0,\n  \"k_wrong\": 2,\n  \"trials\": 5,\n  \"E1_wrong_file_time_to_resident_ms\": {\n    \"mean\": 60.06,\n    \"p50\": 51.83,\n    \"p95\": 107.11,\n    \"n\": 5\n  },\n  \"E1_effective_MBps\": 166.5,\n  \"E2_needed_file_no_prefetch_ms\": {\n    \"mean\": 48.84,\n    \"p50\": 48.16,\n    \"p95\": 54.02,\n    \"n\": 5\n  },\n  \"E3_needed_file_prefetched_right_ms\": {\n    \"mean\": 3.8,\n    \"p50\": 3.65,\n    \"p95\": 5.68,\n    \"n\": 5\n  },\n  \"E4_needed_file_after_wrong_prefetch_ms\": {\n    \"gap_0ms\": {\n      \"mean\": 258.63,\n      \"p50\": 235.55,\n      \"p95\": 340.38,\n      \"n\": 5\n    },\n    \"gap_100ms\": {\n      \"mean\": 157.06,\n      \"p50\": 137.68,\n      \"p95\": 235.45,\n      \"n\": 5\n    },\n    \"gap_200ms\": {\n      \"mean\": 36.03,\n      \"p50\": 41.07,\n      \"p95\": 48.84,\n      \"n\": 5\n    }\n  },\n  \"E4_penalty_vs_no_prefetch_ms\": {\n    \"gap_0ms\": {\n      \"mean_ms\": 209.79,\n      \"pct\": 429.5\n    },\n    \"gap_100ms\": {\n      \"mean_ms\": 108.22,\n      \"pct\": 221.6\n    },\n    \"gap_200ms\": {\n      \"mean_ms\": -12.81,\n      \"pct\": -26.2\n    }\n  }\n}"}, {"id": "eval", "title": "Evaluation harness, demo", "note": "A 15-second demo on the small set. It fits in RAM, so both configurations land at parity, as expected.", "text": "$ sudo python3 eval_runner.py --baselines none,full --scale 0.3 --skip-setup --iterations 1 --warmup 0 --duration 15\n[Config] scale=0.3 noise=0.0 duration=15s iterations=1\n--- iteration 1/1: 1. No Daemon (Default Linux Readahead)\n    [System] Settling writeback + dropping caches...\n    hit=95.57% reads=2710 lat={'mean': 4.76, 'p50': 4.88, 'p95': 6.35, 'p99': 7.73, 'psi_max': 0.0}\n--- iteration 1/1: 4. Full Context-Aware AI\n    [System] Settling writeback + dropping caches...\n    hit=95.40% reads=2607 lat={'mean': 5.34, 'p50': 5.36, 'p95': 6.7, 'p99': 7.59, 'psi_max': 0.0}\n============================================================\nSUMMARY\n============================================================\nResult: 1. No Daemon (Default Linux Readahead)\nMean Cache Hit Rate: 95.57% +/- 0.00% (n=1) | reads/run ~2710\n   peak memory PSI some-avg10: [0.0]\n   read latency mean: 4.76 ms\n   read latency p50: 4.88 ms\n   read latency p95: 6.35 ms\n   read latency p99: 7.73 ms\n   runs: ['95.57%']  reads: [2710]\nResult: 4. Full Context-Aware AI\nMean Cache Hit Rate: 95.40% +/- 0.00% (n=1) | reads/run ~2607\n   peak memory PSI some-avg10: [0.0]\n   read latency mean: 5.34 ms\n   read latency p50: 5.36 ms\n   read latency p95: 6.70 ms\n   read latency p99: 7.59 ms\n   runs: ['95.40%']  reads: [2607]\n    [Precision Stats] Useful Prefetches: 302 / 306 (98.7%)\n    [Precision Stats] Total DONTNEED Evictions: 0\n    [Actuator] {'issued': 306, 'throttled_mem': 0, 'deduped': 2188, 'dropped_queue': 0, 'dropped_inflight': 0}\n    [Overhead] Avg model+dispatch time per open event: 74.5 us (2640 events)\n    [Overhead] Max RSS (RAM): 170564 KB\n    [Overhead] CPU Time: User 1.00s, Sys 0.22s\nEvaluation Complete."}, {"id": "v6", "title": "5-run experiment log", "note": "The real 14 GB memory-pressure experiment behind the results section.", "text": "$ sudo python3 eval_runner.py --baselines none,ra-tuned,full,full-gate --scale 3.5 --iterations 5 --warmup 1 --duration 40 --ballast-gb 4\n[Ballast] holding 4.0 GB; MemAvailable now 7345 MB\nCreating 1400 test files (13.7 GB)...\n[Config] scale=3.5 noise=0.0 duration=40s iterations=5\n\u00b7\u00b7\u00b7 21 runs omitted (about 25 minutes) \u00b7\u00b7\u00b7\n============================================================\nSUMMARY\n============================================================\nResult: 1. No Daemon (Default Linux Readahead)\nMean Cache Hit Rate: 13.35% +/- 0.67% (n=5) | reads/run ~5534\n   peak memory PSI some-avg10: [0.2, 1.0, 0.9, 1.1, 1.1]\n   read latency mean: 10.31 ms\n   read latency p50: 9.34 ms\n   read latency p95: 19.11 ms\n   read latency p99: 27.48 ms\n   runs: ['14.49%', '13.11%', '13.34%', '12.76%', '13.07%']  reads: [5669, 5527, 5535, 5495, 5445]\nResult: 7. No daemon, kernel readahead tuned (read_ahead_kb=8192)\nMean Cache Hit Rate: 13.46% +/- 0.74% (n=5) | reads/run ~5529\n   peak memory PSI some-avg10: [0.0, 0.2, 0.3, 0.2, 0.2]\n   read latency mean: 10.38 ms\n   read latency p50: 9.05 ms\n   read latency p95: 22.20 ms\n   read latency p99: 35.22 ms\n   runs: ['14.21%', '14.17%', '13.34%', '12.47%', '13.11%']  reads: [5621, 5577, 5526, 5448, 5472]\nResult: 4. Full Context-Aware AI\nMean Cache Hit Rate: 70.03% +/- 0.76% (n=5) | reads/run ~7145\n   peak memory PSI some-avg10: [1.2, 1.4, 1.4, 1.3, 1.0]\n   read latency mean: 5.92 ms\n   read latency p50: 4.13 ms\n   read latency p95: 14.76 ms\n   read latency p99: 25.18 ms\n   runs: ['70.54%', '70.37%', '69.19%', '70.79%', '69.24%']  reads: [7059, 7111, 7158, 7210, 7187]\n    [Precision Stats] Useful Prefetches: 4952 / 5028 (98.5%)\n    [Precision Stats] Total DONTNEED Evictions: 0\n    [Actuator] {'issued': 5028, 'throttled_mem': 0, 'deduped': 1349, 'dropped_queue': 0, 'dropped_inflight': 0}\n    [Overhead] Avg model+dispatch time per open event: 49.8 us (7822 events)\n    [Overhead] Max RSS (RAM): 170516 KB\n    [Overhead] CPU Time: User 1.45s, Sys 8.91s\nResult: 9. Full AI + precision-aware gate (min precision 0.6)\nMean Cache Hit Rate: 69.72% +/- 0.67% (n=5) | reads/run ~7204\n   peak memory PSI some-avg10: [1.3, 1.1, 1.3, 1.3, 1.3]\n   read latency mean: 5.78 ms\n   read latency p50: 3.94 ms\n   read latency p95: 14.72 ms\n   read latency p99: 25.11 ms\n   runs: ['68.75%', '70.35%', '69.45%', '70.32%', '69.72%']  reads: [7174, 7256, 7182, 7187, 7221]\n    [Precision Stats] Useful Prefetches: 5035 / 5040 (99.9%)\n    [Precision Stats] Total DONTNEED Evictions: 0\n    [Actuator] {'issued': 5040, 'throttled_mem': 0, 'deduped': 784, 'dropped_queue': 0, 'dropped_inflight': 0}\n    [Overhead] Avg model+dispatch time per open event: 58.5 us (7242 events)\n    [Overhead] Max RSS (RAM): 170292 KB\n    [Overhead] CPU Time: User 1.53s, Sys 9.62s\nEvaluation Complete."}, {"id": "sim", "title": "Offline simulator", "note": "Runs on any OS; this run is from macOS.", "text": "$ python3 simulate.py\n\n== ample cache (400 files) ==\ntrace                                     none         name-oracle              markov     markov-memaware\ncyclic (workload.py)              97.5% (  0%)       100.0% ( 99%)        97.5% (  0%)        97.5% (  0%)\ncyclic + 10% noise                97.5% (  0%)        99.6% ( 99%)        97.5% (  0%)        97.5% (  0%)\nbranching (build graph)           97.7% (  0%)        98.7% ( 82%)        97.7% (  0%)        97.7% (  0%)\nzipf (no structure)               96.7% (  0%)        98.2% ( 95%)        96.7% (  0%)        96.7% (  0%)\n\n== tight cache (100 files) ==\ntrace                                     none         name-oracle              markov     markov-memaware\ncyclic (workload.py)               0.0% (  0%)        99.0% ( 99%)        97.5% (100%)        97.5% (100%)\ncyclic + 10% noise                 6.3% (  0%)        84.2% ( 88%)        82.2% ( 89%)        82.0% ( 85%)\nbranching (build graph)           57.0% (  0%)        45.9% ( 37%)        73.7% ( 82%)        73.8% ( 60%)\nzipf (no structure)               70.4% (  0%)        63.7% ( 33%)        69.8% ( 79%)        70.0% ( 21%)"}], "code": [{"title": "Kernel side: eBPF probe on openat exit", "file": "prefetch_daemon.py (embedded C)", "text": "int trace_exit_openat(struct tracepoint__syscalls__sys_exit_openat *ctx) {\n    u64 pid_tgid = bpf_get_current_pid_tgid();\n    u32 pid = pid_tgid >> 32;\n    if (pid == DAEMON_PID) return 0;\n    int ret = ctx->ret;\n    \n    struct val_t *valp = infotmp.lookup(&pid_tgid);\n    if (valp == 0) return 0;\n    \n    if (ret >= 0) {\n        struct fd_key_t key = {.pid = pid, .fd = (u32)ret};\n        fdmap.update(&key, valp);\n        \n        struct event_t *event = events.ringbuf_reserve(sizeof(struct event_t));\n        if (event) {\n            event->pid = pid;\n            event->type = 1; \n            bpf_get_current_comm(&event->comm, sizeof(event->comm));\n            __builtin_memcpy(&event->filename, valp->filename, sizeof(event->filename));\n            events.ringbuf_submit(event, 0);\n        }\n    }\n    infotmp.delete(&pid_tgid);\n    return 0;\n}"}, {"title": "Prediction: variable-order Markov model", "file": "prefetch_model.py", "text": "    def predict_next(self, pid, comm, time_bucket, top_k=None, min_conf=0.0):\n        \"\"\"Return [(file, confidence)] sorted by descending confidence.\"\"\"\n        hist = self.history.get(pid)\n        if not hist:\n            return []\n        h = tuple(hist)\n        scores = {}\n        total_weight = 0\n        for i in range(len(h)):\n            ctx = h[i:]\n            row = self.freq.get(ctx)\n            if row is None:\n                continue\n            L = len(ctx)\n            total_weight += L\n            denom = self.totals[ctx]\n            for nxt, cnt in row.items():\n                scores[nxt] = scores.get(nxt, 0.0) + L * cnt / denom\n        if not scores:\n            return []\n\n        ranked = []\n        for f, s in scores.items():\n            p_seq = s / total_weight\n            if self.mode == \"full\":\n                conf = self.w_seq * p_seq + (1 - self.w_seq) * self._p_ctx(f, comm, time_bucket)\n            else:\n                conf = p_seq\n            if conf >= min_conf:\n                ranked.append((f, conf))\n        ranked.sort(key=lambda x: x[1], reverse=True)\n        return ranked[:top_k] if top_k else ranked"}, {"title": "Actuation: chunked WILLNEED", "file": "prefetch_actuator.py", "text": "def _fadvise(path, advice, max_bytes=MAX_PREFETCH_BYTES):\n    \"\"\"posix_fadvise(WILLNEED) over a whole file only loads ~1.2 MB on Linux 6.8\n    (measured: 12% of a 10 MB file, with or without readahead(2)); the rest is\n    silently ignored. Issuing it in 1 MB chunks loads the full range (measured 100%),\n    so large-file prefetches work only when chunked.\"\"\"\n    fd = os.open(path, os.O_RDONLY | os.O_NONBLOCK)\n    try:\n        if advice == FADV_WILLNEED:\n            size = min(os.fstat(fd).st_size, max_bytes)\n            for off in range(0, size, WILLNEED_CHUNK):\n                os.posix_fadvise(fd, off, min(WILLNEED_CHUNK, size - off), advice)\n        else:\n            os.posix_fadvise(fd, 0, 0, advice)\n    finally:\n        os.close(fd)"}]};</script><script>/* Port of prefetch_model.PrefetchModel (variable-order Markov + context) and simulate.LRUCache. */
+(function (root) {
+  const SEP = "\u0001";
+  function ext(f) { const b = f.slice(f.lastIndexOf("/") + 1); const i = b.lastIndexOf("."); return i > 0 ? b.slice(i) : ".none"; }
+  class PrefetchModel {
+    constructor(mode = "full", maxWindow = 5, wSeq = 0.6) {
+      this.mode = mode; this.W = maxWindow; this.wSeq = wSeq;
+      this.history = new Map(); this.freq = new Map(); this.totals = new Map();
+      this.fileTotal = new Map(); this.fileComm = new Map(); this.fileTime = new Map();
+      this.commTotal = new Map(); this.commExt = new Map();
+    }
+    _hist(pid) { let h = this.history.get(pid); if (!h) { h = []; this.history.set(pid, h); } return h; }
+    processAccess(pid, comm, bucket, f) {
+      const h = this._hist(pid);
+      if (this.mode !== "static") {
+        for (let i = 0; i < h.length; i++) {
+          const ctx = h.slice(i).join(SEP);
+          let row = this.freq.get(ctx);
+          if (!row) { row = new Map(); this.freq.set(ctx, row); this.totals.set(ctx, 0); }
+          row.set(f, (row.get(f) || 0) + 1); this.totals.set(ctx, this.totals.get(ctx) + 1);
+        }
+        this.fileTotal.set(f, (this.fileTotal.get(f) || 0) + 1);
+        const inc = (m, k, sub) => { let d = m.get(k); if (!d) { d = new Map(); m.set(k, d); } d.set(sub, (d.get(sub) || 0) + 1); };
+        inc(this.fileComm, f, comm); inc(this.fileTime, f, bucket);
+        this.commTotal.set(comm, (this.commTotal.get(comm) || 0) + 1); inc(this.commExt, comm, ext(f));
+      }
+      h.push(f); if (h.length > this.W) h.shift();
+    }
+    _pCtx(f, comm, bucket) {
+      const ft = this.fileTotal.get(f) || 0; if (!ft) return 0;
+      const pComm = (this.fileComm.get(f).get(comm) || 0) / ft;
+      const pTime = (this.fileTime.get(f).get(bucket) || 0) / ft;
+      const ct = this.commTotal.get(comm) || 0;
+      const pExt = ct ? ((this.commExt.get(comm) || new Map()).get(ext(f)) || 0) / ct : 0;
+      return (pComm + pTime + pExt) / 3;
+    }
+    predictNext(pid, comm, bucket, topK = null, minConf = 0) {
+      const h = this.history.get(pid); if (!h || !h.length) return [];
+      const scores = new Map(); let tw = 0;
+      for (let i = 0; i < h.length; i++) {
+        const ctx = h.slice(i).join(SEP), row = this.freq.get(ctx); if (!row) continue;
+        const L = h.length - i, denom = this.totals.get(ctx); tw += L;
+        for (const [nxt, cnt] of row) scores.set(nxt, (scores.get(nxt) || 0) + L * cnt / denom);
+      }
+      if (!scores.size) return [];
+      const ranked = [];
+      for (const [f, s] of scores) {
+        const pSeq = s / tw;
+        const conf = this.mode === "full" ? this.wSeq * pSeq + (1 - this.wSeq) * this._pCtx(f, comm, bucket) : pSeq;
+        if (conf >= minConf) ranked.push([f, conf]);
+      }
+      ranked.sort((a, b) => b[1] - a[1]);          // stable, like Python's sort
+      return topK ? ranked.slice(0, topK) : ranked;
+    }
+    get size() { return this.freq.size; }
+  }
+  class LRUCache {                                  // insertion-ordered Map = OrderedDict
+    constructor(cap) { this.cap = cap; this.d = new Map(); this.evicted = []; }
+    touch(f) { const hit = this.d.has(f); this.d.delete(f); this.d.set(f, true); this._evict(); return hit; }
+    prefetch(f) { if (this.d.has(f)) return false; this.d.set(f, true); this._evict(); return true; }
+    _evict() { while (this.d.size > this.cap) { const k = this.d.keys().next().value; this.d.delete(k); this.evicted.push(k); } }
+  }
+  const api = { PrefetchModel, LRUCache };
+  if (typeof module !== "undefined") module.exports = api; else root.PF = api;
+})(this);
+</script><script>
+(function(){
+const $=(s)=>document.querySelector(s);
+const css=(n)=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const NS="http://www.w3.org/2000/svg";
+const reduce=window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+const fmt=(v,d=0)=>Number(v).toLocaleString("en-US",{minimumFractionDigits:d,maximumFractionDigits:d});
+
+/* ---------- residency maps ---------- */
+const COLS=64, ROWS=40, PAGES=COLS*ROWS;
+const state={A:Math.round(PAGES*DATA.willneed[0].resident), B:Math.round(PAGES*DATA.willneed[2].resident)};
+function drawMap(id,filled){
+  const c=document.getElementById(id); if(!c) return;
+  const w=c.clientWidth||640, dpr=window.devicePixelRatio||1;
+  c.width=Math.round(w*dpr); c.height=Math.round(w*ROWS/COLS*dpr);
+  const g=c.getContext("2d"); const cw=c.width/COLS, ch=c.height/ROWS, gap=Math.max(1,cw*0.14);
+  const on=css("--resident"), off=css("--cell");
+  g.clearRect(0,0,c.width,c.height);
+  for(let i=0;i<PAGES;i++){const x=(i%COLS)*cw, y=Math.floor(i/COLS)*ch;
+    g.fillStyle=i<filled?on:off; g.fillRect(x+gap/2,y+gap/2,cw-gap,ch-gap);}
+}
+function setPct(el,n){el.textContent=(100*n/PAGES).toFixed(1).replace(/\.0$/,"")+"%";}
+function drawMaps(){drawMap("mapA",state.A);drawMap("mapB",state.B);setPct($("#pctA"),state.A);setPct($("#pctB"),state.B);}
+let anim=null;
+function replay(){
+  if(anim) cancelAnimationFrame(anim);
+  const finalA=Math.round(PAGES*DATA.willneed[0].resident), finalB=PAGES;
+  if(reduce){state.A=finalA;state.B=finalB;drawMaps();return;}
+  const t0=performance.now();
+  const step=(t)=>{const e=(t-t0)/1600;
+    state.A=Math.min(finalA,Math.floor(finalA*Math.min(1,e/0.25)));      // one request: stops early
+    state.B=Math.min(finalB,Math.floor(Math.min(1,e)*10)*256 + Math.floor(((e*10)%1)*256)*(e<1?1:0));
+    if(e>=1){state.B=finalB;}
+    drawMaps(); if(e<1) anim=requestAnimationFrame(step);};
+  state.A=0;state.B=0;anim=requestAnimationFrame(step);
+}
+$("#replay").addEventListener("click",replay);
+
+/* ---------- tooltip ---------- */
+const tip=$("#tip");
+document.addEventListener("pointermove",(e)=>{const t=e.target.closest&&e.target.closest("[data-tip]");
+  if(!t){tip.hidden=true;return;} tip.textContent=t.getAttribute("data-tip"); tip.hidden=false;
+  const x=Math.min(e.clientX+14,window.innerWidth-tip.offsetWidth-8); tip.style.left=x+"px"; tip.style.top=(e.clientY+14)+"px";});
+
+/* ---------- horizontal bar chart ---------- */
+function el(name,attrs,text){const n=document.createElementNS(NS,name);for(const k in attrs)n.setAttribute(k,attrs[k]);if(text!=null)n.textContent=text;return n;}
+function niceMax(v){const e=Math.pow(10,Math.floor(Math.log10(v)));for(const m of [1,1.5,2,2.5,3,4,5,6,8,10]){if(m*e>=v)return m*e;}return 10*e;}
+function hbars(container,rows,opt){
+  const W=380, lab=opt.lab||112, right=56, rowH=27, top=6, H=top+rows.length*rowH+22;
+  const max=opt.max||niceMax(Math.max(...rows.map(r=>r.v))*1.02);
+  const X=(v)=>lab+(W-lab-right)*v/max;
+  const svg=el("svg",{viewBox:`0 0 ${W} ${H}`,width:"100%",role:"img","aria-label":opt.title});
+  [0,0.5,1].forEach(f=>{const v=max*f, x=X(v);
+    svg.appendChild(el("line",{x1:x,y1:top,x2:x,y2:H-18,class:"grid"}));
+    svg.appendChild(el("text",{x:x,y:H-4,"text-anchor":"middle","font-size":10.5,class:"t-muted"},opt.tick(v)));});
+  if(opt.ref!=null){const x=X(opt.ref);svg.appendChild(el("line",{x1:x,y1:top-2,x2:x,y2:H-18,"stroke-dasharray":"4 3","stroke-width":1.5,style:"stroke:var(--muted)"}));}
+  rows.forEach((r,i)=>{const y=top+i*rowH, bh=17, w=Math.max(2,X(r.v)-lab);
+    svg.appendChild(el("text",{x:0,y:y+bh-4,"font-size":11.5,class:"t-ink"},r.label));
+    svg.appendChild(el("path",{d:`M${lab},${y} H${lab+w-4} Q${lab+w},${y} ${lab+w},${y+4} V${y+bh-4} Q${lab+w},${y+bh} ${lab+w-4},${y+bh} H${lab} Z`,class:"bar "+r.cls,"data-tip":r.tip||""}));
+    svg.appendChild(el("text",{x:lab+w+5,y:y+bh-4,"font-size":11.5,"font-weight":700,class:"t-ink",style:"paint-order:stroke;stroke:var(--surface);stroke-width:3px"},r.text));});
+  container.replaceChildren(svg);
+}
+
+/* WILLNEED chart */
+hbars($("#chartWillneed"),DATA.willneed.map(r=>{const [a,b]=r.label.split("|");return{label:`${a.replace("posix_fadvise","fadvise")} · ${b}`,v:100*r.resident,
+  cls:r.chunked?"f-gate":"f-ra",text:fmt(100*r.resident,1).replace(/\.0$/,"")+"%",tip:`${a}, ${b}: ${fmt(100*r.resident,1)}% of 2,560 pages resident (kernel ${DATA.kernel})`};}),
+  {max:100,lab:150,tick:(v)=>fmt(v)+"%",title:"Residency after one prefetch request"});
+
+/* ---------- results ---------- */
+const CFG={"1":["No daemon","f-base","--c-base"],"7":["Tuned readahead","f-ra","--c-ra"],"4":["Daemon","f-daemon","--c-daemon"],"9":["Daemon + gate","f-gate","--c-gate"],"5":["Daemon","f-daemon","--c-daemon"],"10":["+ adaptive limit","f-adapt","--c-adapt"],"11":["+ eviction","f-evict","--c-evict"]};
+const SIG=(log,cfg,m,tag="vs_none")=>((DATA.sig[log]||{})[tag]||{})[cfg]?.[m];
+const pS=(p)=>p<0.001?"p < 0.001":`p = ${p.toFixed(p<0.01?3:2)}`;
+const dS=(r)=>r?`${r[0]>=0?"+":"−"}${Math.abs(r[0]).toFixed(0)}% (95% CI ${r[1]>=0?"+":"−"}${Math.abs(r[1]).toFixed(0)} to ${r[2]>=0?"+":"−"}${Math.abs(r[2]).toFixed(0)}%, ${pS(r[3])})`:"n/a";
+const SETTINGS={
+  pressure:{keys:["1","7","4","9"],text:"14 GB of files read in a fixed, repeating order by three processes. A 4 GB memory ballast leaves about 7 GB of page cache, so the working set does not fit.",
+    verdict:()=>`Throughput ${dS(SIG("v6_pressure","4","throughput (per run)"))} and median latency ${dS(SIG("v6_pressure","4","median latency"))}. The p99 change is not significant here (${dS(SIG("v6_pressure","4","p99 latency"))}). Raising read_ahead_kb to 8 MB changes throughput by ${dS(SIG("v6_pressure","7","throughput (per run)"))} and makes p99 worse, because the misses are first reads of files the kernel has no reason to expect.`,good:true},
+  noise:{keys:["1","7","4","9"],text:"Same as memory pressure, but 30% of reads go to random files the model cannot predict.",
+    verdict:()=>`Only 42% of prefetches get used. Throughput ${dS(SIG("v6_noise","4","throughput (per run)"))} and p99 ${dS(SIG("v6_noise","4","p99 latency"))}: neither change is significant, so with random access the daemon neither clearly helps nor clearly hurts. The precision gate cuts prefetches by 36% but only lifts precision to 48%.`,good:false},
+  slow10:{keys:["1","4","10"],text:"Reads capped at 400 MB/s with a cgroup, a 9 GB ballast, and 10 ms of work after each file, so the disk is busy almost all the time. Four runs per configuration.",
+    verdict:()=>`Median latency ${dS(SIG("v8_slowdisk_think10","4","median latency"))}, but p99 ${dS(SIG("v8_slowdisk_think10","4","p99 latency"))}. 99.7% of prefetches were right: correct prefetches queue ahead of real reads on the limited disk. The adaptive limit brings p99 back (${dS(SIG("v8_slowdisk_think10","10","p99 latency","vs_full"))} against the plain daemon) but only by switching prefetching almost off, so the median gain goes too.`,good:false},
+  slow100:{keys:["1","4","10"],text:"The same slow disk with 100 ms of work after each file, so the disk has idle time between reads. (An earlier version of this test was reported as 100 ms but actually ran at 10 ms; this is the corrected run.)",
+    verdict:()=>`The hit rate triples, but throughput ${dS(SIG("v8_slowdisk_think100","4","throughput (per run)"))} and p99 ${dS(SIG("v8_slowdisk_think100","4","p99 latency"))}: no effect either way. Each step is mostly think time, so faster reads barely change the rate, and the idle disk absorbs the prefetches without hurting the tail.`,good:false},
+  policies:{keys:["1","4","11","10"],text:"The memory-pressure setting again, with the two new policies. Dead-file eviction drops a file after use when the model's estimate of its reuse distance is larger than the cache; the adaptive limit sizes prefetch I/O from the kernel's I/O stall time.",
+    verdict:()=>`The daemon repeats its gain: throughput ${dS(SIG("v8_pressure","4","throughput (per run)"))}, p99 ${dS(SIG("v8_pressure","4","p99 latency"))}. Dead-file eviction is better still: throughput ${dS(SIG("v8_pressure","11","throughput (per run)","vs_full"))} and p99 ${dS(SIG("v8_pressure","11","p99 latency","vs_full"))} against the plain daemon. The adaptive limit has nothing to do here, because the disk is not the bottleneck.`,good:true},
+  vm2:{keys:["1","4","9","11","10"],text:"A smaller VM: 2 CPUs and 3.9 GB of RAM, same kernel. 6 GB of files and no ballast, so the working set does not fit in memory on its own.",
+    verdict:()=>`The hit rate rises from 39% to 62%, but throughput does not move (${dS(SIG("vm2_pressure","4","throughput (per run)"))}): with two CPUs for three readers and the daemon, copying data, not waiting for the disk, seems to set the pace. Dead-file eviction still wins: throughput ${dS(SIG("vm2_pressure","11","throughput (per run)","vs_full"))} and median latency ${dS(SIG("vm2_pressure","11","median latency","vs_full"))} against the plain daemon, with less data cached.`,good:true}};
+const METRICS=[["reads","Throughput, files read per run","higher is better",0,""],["p50","Median read latency","lower is better",1," ms"],["p99","Tail read latency (p99)","lower is better",1," ms"],["hit","Page-cache hit rate","higher is better",1,"%"]];
+function render(k){
+  const s=SETTINGS[k], D=DATA[k], base=D["1"];
+  $("#setting").textContent=s.text;
+  $("#cfgLegend").innerHTML=s.keys.map(key=>`<span><span class="sw" style="background:var(${CFG[key][2]})"></span>${CFG[key][0]}</span>`).join("")+`<span>dashed line: no daemon</span>`;
+  const charts=$("#charts"); charts.replaceChildren();
+  METRICS.forEach(([m,title,note,d,unit])=>{
+    const box=document.createElement("div"); box.className="chart";
+    box.innerHTML=`<h3>${title}</h3><p class="note">${note} · mean of ${base.n} runs</p><div></div>`; charts.appendChild(box);
+    hbars(box.lastElementChild,s.keys.map(key=>{const r=D[key];const rel=key==="1"?"":` (${r[m]>=base[m]?"+":"−"}${fmt(Math.abs(100*(r[m]-base[m])/base[m]),0)}% vs no daemon)`;
+      return{label:CFG[key][0],v:r[m],cls:CFG[key][1],text:fmt(r[m],d)+unit,
+        tip:`${CFG[key][0]}: ${fmt(r[m],d)}${unit}${rel}${m==="hit"?` · ±${fmt(r.sd,1)} sd`:""}${m==="p99"?` · p95 ${fmt(r.p95,1)} ms`:""}`};}),
+      {ref:base[m],tick:(v)=>fmt(v,v<10&&v%1?1:0)+(unit==="%"?"%":""),title});
+  });
+  const v=$("#verdict"); v.textContent=typeof s.verdict==="function"?s.verdict():s.verdict; v.classList.toggle("bad",!s.good);
+  const prec=(r)=>r.issued?fmt(100*r.useful/r.issued,1)+"%":"–";
+  $("#resTable").innerHTML=`<thead><tr><th>Configuration</th><th>Hit rate</th><th>Reads / run</th><th>p50 ms</th><th>p95 ms</th><th>p99 ms</th><th>Prefetch precision*</th></tr></thead><tbody>`+
+    s.keys.map(key=>{const r=D[key];return`<tr><td>${CFG[key][0]}</td><td>${fmt(r.hit,1)}% ± ${fmt(r.sd,1)}</td><td>${fmt(r.reads)}</td><td>${fmt(r.p50,1)}</td><td>${fmt(r.p95,1)}</td><td>${fmt(r.p99,1)}</td><td>${prec(r)}</td></tr>`;}).join("")+
+    `</tbody><caption style="caption-side:bottom;text-align:left;padding:8px 12px;color:var(--muted)">*From the final run; other columns are means over ${base.n} runs.</caption>`;
+  document.querySelectorAll(".tabs button").forEach(b=>b.setAttribute("aria-selected",String(b.dataset.k===k)));
+  try{localStorage.setItem("pf-tab",k);}catch(e){}
+}
+document.querySelectorAll(".tabs button").forEach(b=>b.addEventListener("click",()=>render(b.dataset.k)));
+(function(){
+  const A=DATA.apps, L=[["No limit","unlimited"],["400 MB","mem400"],["300 MB","mem300"]];
+  const ch=(log,a)=>{const r=SIG(log,"4",`${a} time per op`);return r?` <span class="muted">(${r[0]>=0?"+":"−"}${Math.abs(r[0]).toFixed(0)}%, ${pS(r[3])})</span>`:"";};
+  $("#appsTable").innerHTML=`<thead><tr><th>Memory limit</th><th>Configuration</th><th>Build</th><th>Python start-up</th><th>Search</th></tr></thead><tbody>`+
+    L.map(([lab,k])=>[["1","No daemon"],["4","Daemon"]].map(([c,n])=>{const r=A[k][c];return`<tr><td>${lab}</td><td>${n}</td><td>${fmt(r.compile/1000,2)} s${c==="4"?ch("v7_apps_"+k,"compile"):""}</td><td>${fmt(r.python,1)} ms${c==="4"?ch("v7_apps_"+k,"python"):""}</td><td>${fmt(r.search,1)} ms${c==="4"?ch("v7_apps_"+k,"search"):""}</td></tr>`;}).join("")).join("")+`</tbody>`;
+  $("#appsVerdict").textContent="The daemon makes every real program slower, more as memory gets tighter. Its predictions were right (93% of prefetches were read), but these programs' files stay in memory even at 300 MB, so there is nothing to gain. What is left is cost: about a million file events a minute handled in Python, close to one CPU core, and 200 MB of its own memory inside the same limit.";
+})();
+let startTab="pressure"; try{const t=localStorage.getItem("pf-tab"); if(t&&SETTINGS[t]) startTab=t;}catch(e){}
+
+/* ---------- penalty calculator + chart ---------- */
+const ids=["k","sz","bw","g","sv"], DEF={k:2,sz:10,bw:100,g:0,sv:42};
+const out={k:(v)=>v,sz:(v)=>v+" MB",bw:(v)=>v+" MB/s",g:(v)=>v+" ms",sv:(v)=>v+" ms"};
+function penalty(p,g){return Math.max(0,1000*p.k*p.sz/p.bw-g);}
+function calc(){
+  const p={}; ids.forEach(i=>{p[i]=Number(document.getElementById(i).value); document.getElementById(i+"o").textContent=out[i](p[i]);});
+  const pen=penalty(p,p.g); $("#penOut").textContent=fmt(pen,0)+" ms";
+  const be=pen<=0?0:100*pen/(p.sv+pen); $("#beOut").textContent=pen<=0?"any":fmt(be,0)+"%";
+  const pr=DATA.pressure["4"], nz=DATA.noise["4"], pp=100*pr.useful/pr.issued, np=100*nz.useful/nz.issued;
+  $("#precNote").textContent= pen<=0
+    ? `With ${p.g} ms of think time the wrong files finish loading before the real read, so a wrong guess costs almost nothing here.`
+    : `In the experiments, ${fmt(pp,1)}% of prefetches were used on predictable access and ${fmt(np,1)}% with 30% random access. With these settings the break-even is about ${fmt(be,0)}%, so the first ${pp>=be?"clears":"misses"} it and the second ${np>=be?"clears":"misses"} it.`;
+  drawPenalty(p);
+}
+function drawPenalty(p){
+  const W=560,H=300,x0=48,x1=545,y0=262,y1=14, GMAX=300;
+  const meas=DATA.mispred, gaps=[0,25,50,100,200];
+  const ymax=Math.max(250,Math.ceil(penalty(p,0)/50)*50);
+  const X=(g)=>x0+(x1-x0)*g/GMAX, Y=(v)=>y0-(y0-y1)*Math.min(Math.max(v,0),ymax)/ymax;
+  const svg=el("svg",{viewBox:`0 0 ${W} ${H}`,width:"100%",role:"img","aria-label":"Delay against think time"});
+  for(let i=0;i<=5;i++){const v=ymax*i/5;svg.appendChild(el("line",{x1:x0,y1:Y(v),x2:x1,y2:Y(v),class:"grid"}));
+    svg.appendChild(el("text",{x:x0-6,y:Y(v)+4,"text-anchor":"end","font-size":11,class:"t-muted"},fmt(v)+(i===5?" ms":"")));}
+  [0,50,100,150,200,250,300].forEach(g=>svg.appendChild(el("text",{x:X(g),y:y0+18,"text-anchor":"middle","font-size":11,class:"t-muted"},g)));
+  svg.appendChild(el("text",{x:(x0+x1)/2,y:H-2,"text-anchor":"middle","font-size":11.5,class:"t-muted"},"think time before the read (ms)"));
+  const pts=[];for(let g=0;g<=GMAX;g+=5)pts.push(`${X(g).toFixed(1)},${Y(penalty(p,g)).toFixed(1)}`);
+  svg.appendChild(el("polyline",{points:pts.join(" "),fill:"none","stroke-width":2,"stroke-dasharray":"6 5",class:"s-model"}));
+  [["cap100","s-daemon","f-daemon","100 MB/s"],["uncapped","s-ra","f-ra","uncapped"]].forEach(([key,sc,fc,lab])=>{
+    const P=gaps.map(g=>[X(g),Y(meas[key].pen[g]),g,meas[key].pen[g]]);
+    svg.appendChild(el("polyline",{points:P.map(q=>q[0].toFixed(1)+","+q[1].toFixed(1)).join(" "),fill:"none","stroke-width":2,class:sc}));
+    P.forEach(q=>svg.appendChild(el("circle",{cx:q[0],cy:q[1],r:6,class:fc,style:"stroke:var(--surface);stroke-width:2","data-tip":`${lab}, ${q[2]} ms think time: +${fmt(q[3],1)} ms`})));
+  });
+  const g=Number(p.g); svg.appendChild(el("line",{x1:X(Math.min(g,GMAX)),y1:y1,x2:X(Math.min(g,GMAX)),y2:y0,style:"stroke:var(--accent)","stroke-width":1}));
+  $("#chartPenalty").replaceChildren(svg);
+}
+ids.forEach(i=>document.getElementById(i).addEventListener("input",calc));
+$("#resetCalc").addEventListener("click",()=>{ids.forEach(i=>document.getElementById(i).value=DEF[i]);calc();});
+
+/* ---------- copy ---------- */
+$("#copyCmd").addEventListener("click",(e)=>{const b=e.currentTarget, txt=$("#cmds").textContent;
+  const done=()=>{b.textContent="Copied";setTimeout(()=>b.textContent="Copy",1500);};
+  const sel=()=>{const r=document.createRange();r.selectNodeContents($("#cmds"));const s=getSelection();s.removeAllRanges();s.addRange(r);b.textContent="Selected, press Ctrl/⌘ C";setTimeout(()=>b.textContent="Copy",2500);};
+  try{navigator.clipboard.writeText(txt).then(done,sel);}catch(err){sel();}});
+
+/* ---------- terminal sessions ---------- */
+const esc=(t)=>t.replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
+function cls(line){
+  if(line.startsWith("$ ")) return "cmd";
+  if(line.startsWith("···")) return "om";
+  if(/hit: prefetched|\bOK\b|ok$|100\.0%|Evaluation Complete|Useful Prefetches/.test(line)) return "ok";
+  if(/WILLNEED|tracepoint  name trace_/.test(line)) return "warn";
+  if(/\(learning\)|recently prefetched|^\s*(loaded_at|xlated)/.test(line)) return "dim";
+  return "";
+}
+function lineHTML(line){const c=cls(line);return c?`<span class="${c}">${esc(line)}</span>`:esc(line);}
+let cur=0, playTimer=null;
+const SES=SESSIONS.sessions;
+function showSession(i,animate){
+  cur=i; clearTimeout(playTimer);
+  document.querySelectorAll("#steps button").forEach((b,j)=>b.setAttribute("aria-selected",String(j===i)));
+  const s=SES[i], out=$("#termOut"), lines=s.text.split("\n");
+  $("#termNote").textContent=s.note;
+  if(!animate||reduce){out.innerHTML=lines.map(lineHTML).join("\n");out.scrollTop=0;return;}
+  out.innerHTML=""; let li=0, ci=0, html="";
+  const tick=()=>{
+    if(li>=lines.length){out.innerHTML=html;return;}
+    const L=lines[li];
+    if(L.startsWith("$ ")&&ci<L.length){ci=Math.min(L.length,ci+2);out.innerHTML=html+`<span class="cmd">${esc(L.slice(0,ci))}</span><span class="cursor"></span>`;
+      if(ci>=L.length){html+=lineHTML(L)+"\n";li++;ci=0;playTimer=setTimeout(tick,260);}else playTimer=setTimeout(tick,22);}
+    else{html+=lineHTML(L)+"\n";li++;out.innerHTML=html+'<span class="cursor"></span>';out.scrollTop=out.scrollHeight;playTimer=setTimeout(tick,L.startsWith("···")?420:28);}
+  };
+  tick();
+}
+$("#steps").innerHTML=SES.map((s,i)=>`<li><button type="button" role="tab" id="step-${s.id}" aria-selected="false"><span class="n">${String(i+1).padStart(2,"0")}</span>${esc(s.title)}</button></li>`).join("");
+document.querySelectorAll("#steps button").forEach((b,i)=>b.addEventListener("click",()=>showSession(i,false)));
+$("#termPlay").addEventListener("click",()=>showSession(cur,true));
+$("#termCopy").addEventListener("click",(e)=>{const b=e.currentTarget;const cmds=SES[cur].text.split("\n").filter(l=>l.startsWith("$ ")).map(l=>l.slice(2)).join("\n");
+  const ok=()=>{b.textContent="Copied";setTimeout(()=>b.textContent="Copy commands",1500);};
+  try{navigator.clipboard.writeText(cmds).then(ok,()=>{b.textContent="Copy failed";setTimeout(()=>b.textContent="Copy commands",1500);});}catch(err){}});
+showSession(3,false);
+
+/* ---------- code excerpts ---------- */
+function codeHTML(t){return t.split("\n").map(l=>{const e=esc(l);
+  if(/^\s*(\/\/|#|""")/.test(l)) return `<span class="c">${e}</span>`;
+  return e.replace(/\b(def|return|for|if|else|elif|while|in|int|struct|u32|u64|try|finally|const|static|with|not|None)\b/g,'<span class="k">$1</span>');}).join("\n");}
+$("#codes").innerHTML=SESSIONS.code.map(c=>`<div class="codebox"><header><b>${esc(c.title)}</b><span>${esc(c.file)}</span></header><pre>${codeHTML(c.text)}</pre></div>`).join("");
+
+/* ---------- in-browser simulation (real model, simulated cache) ---------- */
+const PROCS=[{pid:2496,comm:"builder",n:100,col:"--c-daemon"},{pid:2497,comm:"logger",n:80,col:"--c-ra"},{pid:2498,comm:"processor",n:120,col:"--c-gate"}];
+const PNAME=(p,i)=>`/tmp/${p.comm==="logger"?"tailer":p.comm}_${i}.dat`;
+function rng(seed){return function(){seed|=0;seed=seed+0x6D2B79F5|0;let t=Math.imul(seed^seed>>>15,1|seed);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
+let SIM=null, simTimer=null, simRunning=false;
+function SlotCache(cap){const c=new PF.LRUCache(cap);c.slot=new Map();c.free=[];for(let i=cap-1;i>=0;i--)c.free.push(i);return c;}
+function syncSlots(c){while(c.evicted.length){const f=c.evicted.shift();const s=c.slot.get(f);if(s!=null){c.slot.delete(f);c.free.push(s);}}
+  for(const f of c.d.keys()) if(!c.slot.has(f)) c.slot.set(f,c.free.pop());}
+function simInit(){
+  const cap=+$("#simCap").value;
+  SIM={cap,noise:+$("#simNoise").value/100,mode:$("#simMode").value,r:rng(7),pos:[0,0,0],step:0,
+    base:SlotCache(cap),pf:SlotCache(cap),model:new PF.PrefetchModel($("#simMode").value),
+    unused:new Set(),flash:new Map(),winB:[],winP:[],histB:[],histP:[],issued:0,useful:0,log:[],cur:PROCS.map(()=>["",""])};
+}
+function simStep(){
+  const S=SIM, pi=Math.floor(S.r()*3), P=PROCS[pi];
+  const idx=S.r()<S.noise?Math.floor(S.r()*P.n):S.pos[pi]%P.n; S.pos[pi]++;
+  const f=PNAME(P,idx), owner=pi;
+  const hb=S.base.touch(f); syncSlots(S.base);
+  let wasPf=false; if(S.unused.has(f)){S.unused.delete(f);S.useful++;wasPf=true;}
+  const hp=S.pf.touch(f); syncSlots(S.pf);
+  S.model.processAccess(P.pid,P.comm,0,f);
+  const preds=S.model.predictNext(P.pid,P.comm,0,2,0.5), acts=[];
+  for(const [x,c] of preds){if(S.pf.prefetch(x)){S.issued++;S.unused.add(x);acts.push(`${x.split("/").pop()} ${c.toFixed(2)} -> WILLNEED`);}else acts.push(`${x.split("/").pop()} ${c.toFixed(2)} -> in cache`);}
+  syncSlots(S.pf);
+  for(const k of [...S.unused]) if(!S.pf.d.has(k)) S.unused.delete(k);   // evicted before use
+  if(hp&&wasPf) S.flash.set(f,S.step);
+  S.winB.push(hb?1:0);S.winP.push(hp?1:0);if(S.winB.length>300){S.winB.shift();S.winP.shift();}
+  if(S.step%5===0){const m=(a)=>a.reduce((x,y)=>x+y,0)/a.length*100;S.histB.push(m(S.winB));S.histP.push(m(S.winP));if(S.histB.length>160){S.histB.shift();S.histP.shift();}}
+  const t=`t+${String(S.step).padStart(5," ")}`, base=f.split("/").pop();
+  if(hp&&wasPf) S.log.push(`${t} read pid=${P.pid} ${P.comm.padEnd(9)} ${base.padEnd(18)} | hit: prefetched earlier`);
+  S.log.push(`${t} open pid=${P.pid} ${P.comm.padEnd(9)} ${base.padEnd(18)} | ${acts.join("  ")||"(learning)"}`);
+  if(S.log.length>40) S.log.splice(0,S.log.length-40);
+  S.cur[pi]=[base,preds.length?preds[0][0].split("/").pop()+" "+preds[0][1].toFixed(2):"(learning)"];
+  S.step++;
+}
+function drawCache(id,c,isPf){
+  const cv=document.getElementById(id); if(!cv) return;
+  const cap=SIM.cap, cols=Math.min(20,Math.ceil(Math.sqrt(cap*2))), rows=Math.ceil(cap/cols);
+  const w=cv.clientWidth||400, dpr=window.devicePixelRatio||1, cell=w/cols, h=rows*cell;
+  cv.width=Math.round(w*dpr); cv.height=Math.round(h*dpr); cv.style.height=h+"px";
+  const g=cv.getContext("2d"); g.setTransform(dpr,0,0,dpr,0,0); g.clearRect(0,0,w,h);
+  const owner=new Map(); for(const f of c.d.keys()){const p=PROCS.findIndex(P=>f.includes("/"+(P.comm==="logger"?"tailer":P.comm)+"_"));owner.set(f,p);}
+  const slots=new Array(cap).fill(null); for(const [f,s] of c.slot) if(s!=null&&s<cap) slots[s]=f;
+  const empty=css("--cell"), ink=css("--ink"), colors=PROCS.map(P=>css(P.col)), pad=Math.max(1.2,cell*0.12);
+  slots.forEach((f,i)=>{const x=(i%cols)*cell+pad/2, y=Math.floor(i/cols)*cell+pad/2, s=cell-pad;
+    if(!f){g.fillStyle=empty;g.fillRect(x,y,s,s);return;}
+    const col=colors[owner.get(f)];
+    if(isPf&&SIM.unused.has(f)){g.fillStyle=empty;g.fillRect(x,y,s,s);g.strokeStyle=col;g.lineWidth=Math.max(1.5,s*0.16);g.strokeRect(x+g.lineWidth/2,y+g.lineWidth/2,s-g.lineWidth,s-g.lineWidth);}
+    else{g.fillStyle=col;g.fillRect(x,y,s,s);}
+    const fl=isPf?SIM.flash.get(f):null; if(fl!=null&&SIM.step-fl<6){g.strokeStyle=ink;g.lineWidth=2;g.strokeRect(x-1,y-1,s+2,s+2);}
+  });
+}
+function drawSimChart(){
+  const W=420,H=150,x0=34,x1=412,y0=128,y1=8, S=SIM, n=Math.max(2,S.histB.length);
+  const X=(i)=>x0+(x1-x0)*i/(160-1), Y=(v)=>y0-(y0-y1)*v/100;
+  const svg=el("svg",{viewBox:`0 0 ${W} ${H}`,width:"100%",role:"img","aria-label":"Rolling hit rate"});
+  [0,50,100].forEach(v=>{svg.appendChild(el("line",{x1:x0,y1:Y(v),x2:x1,y2:Y(v),class:"grid"}));svg.appendChild(el("text",{x:x0-5,y:Y(v)+4,"text-anchor":"end","font-size":10.5,class:"t-muted"},v+"%"));});
+  svg.appendChild(el("text",{x:x1,y:H-4,"text-anchor":"end","font-size":10.5,class:"t-muted"},"time →"));
+  [[S.histB,"var(--c-base)"],[S.histP,"var(--resident)"]].forEach(([a,c])=>{if(a.length<2)return;
+    svg.appendChild(el("polyline",{points:a.map((v,i)=>`${X(i).toFixed(1)},${Y(v).toFixed(1)}`).join(" "),fill:"none","stroke-width":2,style:`stroke:${c}`}));
+    const i=a.length-1; svg.appendChild(el("circle",{cx:X(i),cy:Y(a[i]),r:4,style:`fill:${c};stroke:var(--surface);stroke-width:2`}));});
+  $("#simChart").replaceChildren(svg);
+}
+function simRender(){
+  const S=SIM, m=(a)=>a.length?a.reduce((x,y)=>x+y,0)/a.length*100:0;
+  $("#hrBase").textContent=fmt(m(S.winB),0)+"%"; $("#hrPf").textContent=fmt(m(S.winP),0)+"%";
+  $("#stAcc").textContent=fmt(S.step); $("#stIss").textContent=fmt(S.issued);
+  $("#stPrec").textContent=S.issued?fmt(100*S.useful/S.issued,1)+"%":"–"; $("#stCtx").textContent=fmt(S.model.size);
+  drawCache("cvBase",S.base,false); drawCache("cvPf",S.pf,true); drawSimChart();
+  $("#lanes").innerHTML=PROCS.map((P,i)=>`<div class="lane"><b>${P.comm}</b><span>opened ${esc(S.cur[i][0]||"–")} · next: ${esc(S.cur[i][1]||"–")}</span></div>`).join("");
+  $("#simLog").innerHTML=S.log.slice(-16).map(lineHTML).join("\n");
+}
+function simLegend(){$("#simLegend").innerHTML=PROCS.map(P=>`<span><span class="sw" style="background:var(${P.col})"></span>${P.comm} (${P.n} files)</span>`).join("")+
+  `<span><span class="sw" style="background:transparent;box-shadow:inset 0 0 0 2px var(--muted)"></span>prefetched, not read yet</span><span><span class="sw" style="background:var(--cell)"></span>empty</span><span>ring: prefetch just paid off</span>`;}
+function simLoop(){
+  if(!simRunning) return;
+  const perSec=+$("#simSpeed").value, n=Math.max(1,Math.round(perSec/30));
+  for(let i=0;i<n;i++) simStep();
+  simRender(); simTimer=setTimeout(simLoop, n>1?33:1000/perSec);
+}
+function simSetRunning(v){simRunning=v;$("#simPlay").textContent=v?"Pause":"Play";clearTimeout(simTimer);if(v) simLoop();}
+function simRestart(warm){simInit(); for(let i=0;i<warm;i++) simStep(); simRender();}
+$("#simPlay").addEventListener("click",()=>simSetRunning(!simRunning));
+$("#simStep").addEventListener("click",()=>{simSetRunning(false);simStep();simRender();});
+$("#simReset").addEventListener("click",()=>{simSetRunning(false);simRestart(0);});
+["simCap","simNoise","simMode"].forEach(id=>document.getElementById(id).addEventListener("input",()=>{
+  $("#simCapO").textContent=$("#simCap").value+" files"; $("#simNoiseO").textContent=$("#simNoise").value+"%";
+  const was=simRunning; simSetRunning(false); simRestart(900); if(was) simSetRunning(true);}));
+simLegend(); simRestart(900);
+
+/* ---------- boot + theme/resize redraw ---------- */
+function all(){drawMaps(); if(SIM) simRender();}
+render(startTab); calc(); all();
+if(location.hash){const t=document.getElementById(location.hash.slice(1)); if(t) requestAnimationFrame(()=>t.scrollIntoView());}
+new MutationObserver(()=>{all();calc();}).observe(document.documentElement,{attributes:true,attributeFilter:["data-theme"]});
+window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change",()=>{all();});
+let rt; window.addEventListener("resize",()=>{clearTimeout(rt);rt=setTimeout(all,120);});
+})();
+</script>
+</body>
+</html>

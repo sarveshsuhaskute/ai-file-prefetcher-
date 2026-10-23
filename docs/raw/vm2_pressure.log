@@ -1,0 +1,182 @@
+Creating 600 test files (5.9 GB)...
+[Config] scale=1.5 noise=0.0 duration=40s iterations=5
+
+--- warm-up 1/1 (discarded)
+    [System] Settling writeback + dropping caches...
+
+--- iteration 1/5: 1. No Daemon (Default Linux Readahead)
+    [System] Settling writeback + dropping caches...
+    hit=39.31% reads=8023 lat={'mean': 4.16, 'p50': 3.61, 'p95': 7.43, 'p99': 10.65, 'psi_max': 2.25}
+
+--- iteration 1/5: 4. Full Context-Aware AI
+    [System] Settling writeback + dropping caches...
+    hit=61.34% reads=8112 lat={'mean': 3.95, 'p50': 3.45, 'p95': 6.99, 'p99': 10.56, 'psi_max': 2.38}
+
+--- iteration 1/5: 9. Full AI + precision-aware gate (min precision 0.6)
+    [System] Settling writeback + dropping caches...
+    hit=61.68% reads=7983 lat={'mean': 4.17, 'p50': 3.71, 'p95': 7.23, 'p99': 10.23, 'psi_max': 2.27}
+
+--- iteration 1/5: 11. Full AI + dead-file eviction
+    [System] Settling writeback + dropping caches...
+    hit=29.41% reads=8862 lat={'mean': 3.22, 'p50': 3.02, 'p95': 4.54, 'p99': 7.91, 'psi_max': 1.22}
+
+--- iteration 1/5: 10. Full AI + adaptive I/O limit (target stall 0.3)
+    [System] Settling writeback + dropping caches...
+    hit=61.43% reads=8129 lat={'mean': 3.95, 'p50': 3.58, 'p95': 6.5, 'p99': 8.31, 'psi_max': 2.03}
+
+--- iteration 2/5: 1. No Daemon (Default Linux Readahead)
+    [System] Settling writeback + dropping caches...
+    hit=39.38% reads=8013 lat={'mean': 4.14, 'p50': 3.84, 'p95': 6.64, 'p99': 8.58, 'psi_max': 2.45}
+
+--- iteration 2/5: 4. Full Context-Aware AI
+    [System] Settling writeback + dropping caches...
+    hit=61.84% reads=7968 lat={'mean': 4.22, 'p50': 3.6, 'p95': 7.64, 'p99': 10.52, 'psi_max': 2.16}
+
+--- iteration 2/5: 9. Full AI + precision-aware gate (min precision 0.6)
+    [System] Settling writeback + dropping caches...
+    hit=61.73% reads=8020 lat={'mean': 4.11, 'p50': 3.6, 'p95': 7.22, 'p99': 10.29, 'psi_max': 2.07}
+
+--- iteration 2/5: 11. Full AI + dead-file eviction
+    [System] Settling writeback + dropping caches...
+    hit=34.02% reads=8389 lat={'mean': 3.92, 'p50': 3.23, 'p95': 8.07, 'p99': 13.57, 'psi_max': 1.12}
+
+--- iteration 2/5: 10. Full AI + adaptive I/O limit (target stall 0.3)
+    [System] Settling writeback + dropping caches...
+    hit=62.19% reads=7994 lat={'mean': 4.21, 'p50': 3.65, 'p95': 7.36, 'p99': 12.25, 'psi_max': 2.44}
+
+--- iteration 3/5: 1. No Daemon (Default Linux Readahead)
+    [System] Settling writeback + dropping caches...
+    hit=39.36% reads=7893 lat={'mean': 4.4, 'p50': 3.88, 'p95': 7.94, 'p99': 11.85, 'psi_max': 2.34}
+
+--- iteration 3/5: 4. Full Context-Aware AI
+    [System] Settling writeback + dropping caches...
+    hit=61.52% reads=8028 lat={'mean': 4.12, 'p50': 3.55, 'p95': 7.73, 'p99': 11.61, 'psi_max': 2.31}
+
+--- iteration 3/5: 9. Full AI + precision-aware gate (min precision 0.6)
+    [System] Settling writeback + dropping caches...
+    hit=61.68% reads=7864 lat={'mean': 4.38, 'p50': 3.79, 'p95': 8.02, 'p99': 11.72, 'psi_max': 2.39}
+
+--- iteration 3/5: 11. Full AI + dead-file eviction
+    [System] Settling writeback + dropping caches...
+    hit=32.27% reads=8540 lat={'mean': 3.7, 'p50': 3.2, 'p95': 6.96, 'p99': 11.91, 'psi_max': 1.43}
+
+--- iteration 3/5: 10. Full AI + adaptive I/O limit (target stall 0.3)
+    [System] Settling writeback + dropping caches...
+    hit=61.76% reads=8159 lat={'mean': 3.92, 'p50': 3.42, 'p95': 6.79, 'p99': 10.5, 'psi_max': 2.13}
+
+--- iteration 4/5: 1. No Daemon (Default Linux Readahead)
+    [System] Settling writeback + dropping caches...
+    hit=39.41% reads=8047 lat={'mean': 4.11, 'p50': 3.58, 'p95': 7.6, 'p99': 11.7, 'psi_max': 2.33}
+
+--- iteration 4/5: 4. Full Context-Aware AI
+    [System] Settling writeback + dropping caches...
+    hit=61.47% reads=8139 lat={'mean': 3.93, 'p50': 3.47, 'p95': 6.85, 'p99': 11.37, 'psi_max': 2.26}
+
+--- iteration 4/5: 9. Full AI + precision-aware gate (min precision 0.6)
+    [System] Settling writeback + dropping caches...
+    hit=61.59% reads=8068 lat={'mean': 3.99, 'p50': 3.48, 'p95': 7.57, 'p99': 11.88, 'psi_max': 2.4}
+
+--- iteration 4/5: 11. Full AI + dead-file eviction
+    [System] Settling writeback + dropping caches...
+    hit=32.94% reads=8361 lat={'mean': 3.99, 'p50': 3.26, 'p95': 8.33, 'p99': 13.26, 'psi_max': 1.56}
+
+--- iteration 4/5: 10. Full AI + adaptive I/O limit (target stall 0.3)
+    [System] Settling writeback + dropping caches...
+    hit=61.72% reads=8180 lat={'mean': 3.91, 'p50': 3.44, 'p95': 6.91, 'p99': 11.86, 'psi_max': 2.3}
+
+--- iteration 5/5: 1. No Daemon (Default Linux Readahead)
+    [System] Settling writeback + dropping caches...
+    hit=39.20% reads=8167 lat={'mean': 3.92, 'p50': 3.48, 'p95': 7.32, 'p99': 11.48, 'psi_max': 2.4}
+
+--- iteration 5/5: 4. Full Context-Aware AI
+    [System] Settling writeback + dropping caches...
+    hit=61.43% reads=8135 lat={'mean': 3.85, 'p50': 3.42, 'p95': 6.61, 'p99': 9.89, 'psi_max': 2.26}
+
+--- iteration 5/5: 9. Full AI + precision-aware gate (min precision 0.6)
+    [System] Settling writeback + dropping caches...
+    hit=61.44% reads=8043 lat={'mean': 4.05, 'p50': 3.49, 'p95': 7.68, 'p99': 10.5, 'psi_max': 2.09}
+
+--- iteration 5/5: 11. Full AI + dead-file eviction
+    [System] Settling writeback + dropping caches...
+    hit=31.49% reads=8609 lat={'mean': 3.59, 'p50': 3.15, 'p95': 6.23, 'p99': 11.12, 'psi_max': 1.26}
+
+--- iteration 5/5: 10. Full AI + adaptive I/O limit (target stall 0.3)
+    [System] Settling writeback + dropping caches...
+    hit=61.71% reads=8075 lat={'mean': 4.03, 'p50': 3.51, 'p95': 6.83, 'p99': 9.55, 'psi_max': 2.18}
+
+============================================================
+SUMMARY
+============================================================
+
+Result: 1. No Daemon (Default Linux Readahead)
+Mean Cache Hit Rate: 39.33% +/- 0.08% (n=5) | reads/run ~8029
+   peak memory PSI some-avg10: [2.2, 2.5, 2.3, 2.3, 2.4]
+   read latency mean: 4.15 ms
+   read latency p50: 3.68 ms
+   read latency p95: 7.39 ms
+   read latency p99: 10.85 ms
+   runs: ['39.31%', '39.38%', '39.36%', '39.41%', '39.20%']  reads: [8023, 8013, 7893, 8047, 8167]
+
+Result: 4. Full Context-Aware AI
+Mean Cache Hit Rate: 61.52% +/- 0.19% (n=5) | reads/run ~8076
+   peak memory PSI some-avg10: [2.4, 2.2, 2.3, 2.3, 2.3]
+   read latency mean: 4.01 ms
+   read latency p50: 3.50 ms
+   read latency p95: 7.16 ms
+   read latency p99: 10.79 ms
+   runs: ['61.34%', '61.84%', '61.52%', '61.47%', '61.43%']  reads: [8112, 7968, 8028, 8139, 8135]
+    [Precision Stats] Useful Prefetches: 3114 / 3119 (99.8%)
+    [Precision Stats] Total DONTNEED Evictions: 0
+    [Actuator] {'issued': 3119, 'throttled_mem': 0, 'deduped': 4421, 'dropped_queue': 0, 'dropped_inflight': 0}
+    [Overhead] Avg model+dispatch time per open event: 67.2 us (8161 events)
+    [Overhead] Max RSS (RAM): 170680 KB
+    [Overhead] CPU Time: User 1.51s, Sys 1.63s
+
+Result: 9. Full AI + precision-aware gate (min precision 0.6)
+Mean Cache Hit Rate: 61.62% +/- 0.11% (n=5) | reads/run ~7996
+   peak memory PSI some-avg10: [2.3, 2.1, 2.4, 2.4, 2.1]
+   read latency mean: 4.14 ms
+   read latency p50: 3.61 ms
+   read latency p95: 7.54 ms
+   read latency p99: 10.92 ms
+   runs: ['61.68%', '61.73%', '61.68%', '61.59%', '61.44%']  reads: [7983, 8020, 7864, 8068, 8043]
+    [Precision Stats] Useful Prefetches: 3069 / 3071 (99.9%)
+    [Precision Stats] Total DONTNEED Evictions: 0
+    [Actuator] {'issued': 3071, 'throttled_mem': 0, 'deduped': 4375, 'dropped_queue': 0, 'dropped_inflight': 0}
+    [Overhead] Avg model+dispatch time per open event: 66.8 us (8066 events)
+    [Overhead] Max RSS (RAM): 170696 KB
+    [Overhead] CPU Time: User 1.30s, Sys 1.54s
+
+Result: 11. Full AI + dead-file eviction
+Mean Cache Hit Rate: 32.03% +/- 1.73% (n=5) | reads/run ~8552
+   peak memory PSI some-avg10: [1.2, 1.1, 1.4, 1.6, 1.3]
+   read latency mean: 3.68 ms
+   read latency p50: 3.17 ms
+   read latency p95: 6.83 ms
+   read latency p99: 11.55 ms
+   runs: ['29.41%', '34.02%', '32.27%', '32.94%', '31.49%']  reads: [8862, 8389, 8540, 8361, 8609]
+    [Precision Stats] Useful Prefetches: 2713 / 2715 (99.9%)
+    [Precision Stats] Total DONTNEED Evictions: 8009
+    [Actuator] {'issued': 2715, 'throttled_mem': 0, 'deduped': 5297, 'dropped_queue': 0, 'dropped_inflight': 0}
+    [Dead-file eviction] evicted 8009 files after use
+    [Overhead] Avg model+dispatch time per open event: 38.8 us (8631 events)
+    [Overhead] Max RSS (RAM): 170688 KB
+    [Overhead] CPU Time: User 1.56s, Sys 4.44s
+
+Result: 10. Full AI + adaptive I/O limit (target stall 0.3)
+Mean Cache Hit Rate: 61.76% +/- 0.27% (n=5) | reads/run ~8107
+   peak memory PSI some-avg10: [2.0, 2.4, 2.1, 2.3, 2.2]
+   read latency mean: 4.00 ms
+   read latency p50: 3.52 ms
+   read latency p95: 6.88 ms
+   read latency p99: 10.49 ms
+   runs: ['61.43%', '62.19%', '61.76%', '61.72%', '61.71%']  reads: [8129, 7994, 8159, 8180, 8075]
+    [Precision Stats] Useful Prefetches: 3082 / 3086 (99.9%)
+    [Precision Stats] Total DONTNEED Evictions: 0
+    [Actuator] {'issued': 3086, 'throttled_mem': 0, 'deduped': 4394, 'dropped_queue': 0, 'dropped_inflight': 0}
+    [Adaptive I/O] {'samples': 157, 'cuts': 1, 'avg_limit_mb': 122.1}
+    [Overhead] Avg model+dispatch time per open event: 56.0 us (8101 events)
+    [Overhead] Max RSS (RAM): 170564 KB
+    [Overhead] CPU Time: User 1.29s, Sys 1.47s
+
+Evaluation Complete.

@@ -1,136 +1,15 @@
-import sys
-import os
-import signal
+import argparse
 import ctypes as ct
 import datetime
-import time
-import argparse
-import pickle
+import os
 import resource
-from collections import defaultdict, deque
-# pyrefly: ignore [missing-import]
-from bcc import BPF
+import signal
+import sys
+import time
 
-def get_ext(filename):
-    _, ext = os.path.splitext(filename)
-    return ext if ext else ".none"
-
-def make_deque():
-    return deque(maxlen=5)
-
-def make_int_dict():
-    return defaultdict(int)
-
-class PrefetchAI:
-    def __init__(self, mode="full", max_window=5):
-        self.mode = mode
-        self.max_window = max_window
-        self.history = defaultdict(make_deque)
-        
-        self.frequency_table = defaultdict(make_int_dict)
-        self.context_totals = defaultdict(int)
-        
-        self.file_total = defaultdict(int)
-        self.file_comm = defaultdict(make_int_dict)
-        self.file_time = defaultdict(make_int_dict)
-        self.comm_total = defaultdict(int)
-        self.comm_ext = defaultdict(make_int_dict)
-
-    def process_access(self, pid, comm, time_bucket, filename):
-        if self.mode == "static":
-            # True offline static model: does not learn during the live run
-            self.history[pid].append(filename) 
-            return
-            
-        hist = self.history[pid]
-        for i in range(len(hist)):
-            context = tuple(list(hist)[i:])
-            self.frequency_table[context][filename] += 1
-            self.context_totals[context] += 1
-            
-        hist.append(filename)
-        
-        self.file_total[filename] += 1
-        self.file_comm[filename][comm] += 1
-        self.file_time[filename][time_bucket] += 1
-        
-        ext = get_ext(filename)
-        self.comm_total[comm] += 1
-        self.comm_ext[comm][ext] += 1
-
-    def predict_next(self, pid, current_comm, current_time_bucket):
-        hist = self.history[pid]
-        if not hist:
-            return []
-
-        active_suffixes = []
-        total_weight = 0
-        for i in range(len(hist)):
-            context = tuple(list(hist)[i:])
-            if context in self.frequency_table:
-                active_suffixes.append(context)
-                total_weight += len(context)
-                
-        if not active_suffixes:
-            return []
-
-        candidates_p_seq = defaultdict(float)
-        for context in active_suffixes:
-            L = len(context)
-            total_transitions = self.context_totals[context]
-            for next_file, count in self.frequency_table[context].items():
-                prob = count / total_transitions
-                candidates_p_seq[next_file] += (L * prob)
-                
-        for file in candidates_p_seq:
-            candidates_p_seq[file] /= total_weight
-                    
-        ranked = []
-        for file, p_seq in candidates_p_seq.items():
-            if self.mode == "full":
-                p_comm = self.file_comm[file][current_comm] / self.file_total[file] if self.file_total[file] else 0
-                p_time = self.file_time[file][current_time_bucket] / self.file_total[file] if self.file_total[file] else 0
-                ext = get_ext(file)
-                p_ext = self.comm_ext[current_comm][ext] / self.comm_total[current_comm] if self.comm_total[current_comm] else 0
-                
-                p_ctx = (p_comm + p_time + p_ext) / 3.0
-                confidence = (0.6 * p_seq) + (0.4 * p_ctx)
-            else:
-                confidence = p_seq
-                
-            ranked.append((file, confidence))
-            
-        ranked.sort(key=lambda x: x[1], reverse=True)
-        return ranked
-
-
-class PrecisionTracker:
-    def __init__(self):
-        self.prefetches = {}
-        self.useful_count = 0
-        self.total_count = 0
-        self.evictions = 0
-        # Calibration: The longest full cycle of any actor in workload.py is 0.6s.
-        # A 2.0s window strictly bounds a "useful" read to roughly the next 3 cycles.
-        self.precision_window = 2.0 
-        
-    def record_prefetch(self, filename):
-        self.prefetches[filename] = time.time()
-        self.total_count += 1
-        
-    def record_evict(self):
-        self.evictions += 1
-        
-    def record_read(self, filename):
-        if filename in self.prefetches:
-            if time.time() - self.prefetches[filename] <= self.precision_window:
-                self.useful_count += 1
-            del self.prefetches[filename]
-
-    def print_stats(self):
-        prec = (self.useful_count / self.total_count) * 100 if self.total_count > 0 else 0
-        print(f"\n[Precision Stats] Useful Prefetches: {self.useful_count} / {self.total_count} ({prec:.1f}%)")
-        print(f"[Precision Stats] Total DONTNEED Evictions: {self.evictions}")
+from prefetch_actuator import Actuator, MemoryMonitor, PrecisionTracker
+from prefetch_policies import DeadFileEvictor, IOPressureController
+from prefetch_model import PrefetchModel
 
 bpf_source = r"""
 #include <linux/sched.h>
@@ -164,12 +43,24 @@ static inline bool filter_noise(const char *filename) {
     if (filename[0] == '/' && filename[1] == 'd' && filename[2] == 'e' && filename[3] == 'v') return true;
     if (filename[0] == '/' && filename[1] == 'e' && filename[2] == 't' && filename[3] == 'c') return true;
 
-    for (int i = 0; i < 250 && i < 256; i++) {
-        if (filename[i] == '\0') break;
-        if (filename[i] == '.' && filename[i+1] == 's' && filename[i+2] == 'o') return true;
-        if (filename[i] == '.' && filename[i+1] == 'p' && filename[i+2] == 'y' && filename[i+3] == 'c') return true;
-        if (filename[i] == '.' && filename[i+1] == 'c' && filename[i+2] == 'a' && filename[i+3] == 'c' && filename[i+4] == 'h' && filename[i+5] == 'e') return true;
-        if (filename[i] == 'l' && filename[i+1] == 'o' && filename[i+2] == 'c' && filename[i+3] == 'a' && filename[i+4] == 'l' && filename[i+5] == 'e') return true;
+    for (int i = 0; i < 248; i++) {
+        char c = filename[i];
+        if (c == '\0') break;
+        if (c != '.' && c != '/') continue;
+#ifndef KEEP_LIBS
+        // shared libs / bytecode: ".so" or ".so.N" / ".pyc" at a name boundary
+        // (kept with --include-libs: for application start-up these opens ARE the workload)
+        if (c == '.' && filename[i+1] == 's' && filename[i+2] == 'o' &&
+            (filename[i+3] == '\0' || filename[i+3] == '.')) return true;
+        if (c == '.' && filename[i+1] == 'p' && filename[i+2] == 'y' && filename[i+3] == 'c' &&
+            filename[i+4] == '\0') return true;
+#endif
+        // path components only: "/.cache/" and "/locale/"
+        if (c == '/' && filename[i+1] == '.' && filename[i+2] == 'c' && filename[i+3] == 'a' &&
+            filename[i+4] == 'c' && filename[i+5] == 'h' && filename[i+6] == 'e' && filename[i+7] == '/') return true;
+        if (c == '/' && filename[i+1] == 'l' && filename[i+2] == 'o' && filename[i+3] == 'c' &&
+            filename[i+4] == 'a' && filename[i+5] == 'l' && filename[i+6] == 'e' &&
+            (filename[i+7] == '/' || filename[i+7] == '\0')) return true;
     }
     return false;
 }
@@ -260,121 +151,144 @@ class Event(ct.Structure):
         ("filename", ct.c_char * 256),
     ]
 
+EV_OPEN, EV_READ, EV_CLOSE = 1, 2, 3
+
+
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--mode", choices=["static", "seq", "full", "train"], default="full")
-    parser.add_argument("--model-path", default="/tmp/prefetch_model.pkl")
+    parser.add_argument("--mode", choices=PrefetchModel.MODES, default="full")
+    parser.add_argument("--model-path", default=os.path.expanduser("~/.cache/prefetch_model.json"))
+    parser.add_argument("--top-k", type=int, default=2, help="max prefetches per open event")
+    parser.add_argument("--threshold", type=float, default=0.5, help="min confidence to prefetch")
+    parser.add_argument("--reclaim-mb-s", type=float, default=0.0,
+                        help="throttle prefetching when the kernel reclaims >= this many MB/s of page cache "
+                             "(0 = off, default: at 200 it disabled a helpful prefetcher in every experiment)")
+    parser.add_argument("--max-inflight-mb", type=float, default=0.0,
+                        help="cap on bytes of prefetch queued/in flight (0 = unlimited); bounds tail-latency impact")
+    parser.add_argument("--min-precision", type=float, default=0.0,
+                        help="precision-aware gate: if the recent hit rate of our prefetches falls below this, "
+                             "only issue prefetches with confidence >= --gate-threshold (0 = off)")
+    parser.add_argument("--gate-threshold", type=float, default=0.9)
+    parser.add_argument("--psi-threshold", type=float, default=5.0,
+                        help="throttle prefetching when memory PSI some-avg10 (%% stalled) >= this")
+    parser.add_argument("--low-mem-frac", type=float, default=0.10,
+                        help="fallback (no PSI): throttle when MemAvailable < this fraction of MemTotal")
+    parser.add_argument("--adaptive-io", type=float, default=0.0,
+                        help="adapt prefetch bytes in flight to I/O pressure: target stall fraction, e.g. 0.3 (0 = off)")
+    parser.add_argument("--evict-dead", action="store_true",
+                        help="drop a file after use when its reuse distance exceeds the page cache")
+    parser.add_argument("--include-libs", action="store_true",
+                        help="also trace .so and .pyc opens (needed for application start-up workloads)")
+    parser.add_argument("--trace", action="store_true",
+                        help="print every traced open, the prediction and the prefetch decision")
+    parser.add_argument("--no-mem-aware", action="store_true",
+                        help="disable memory-pressure throttling")
     args = parser.parse_args()
-    
-    ai = PrefetchAI(mode=args.mode, max_window=5)
+
+    from bcc import BPF  # imported late so the model/actuator stay testable without bcc
+
+    os.makedirs(os.path.dirname(args.model_path), exist_ok=True)
+    model = PrefetchModel(mode=args.mode)
     tracker = PrecisionTracker()
-    
+    mem = MemoryMonitor(psi_threshold=1e9 if args.no_mem_aware else args.psi_threshold,
+                        reclaim_mb_s=0.0 if args.no_mem_aware else args.reclaim_mb_s,
+                        low_frac=0.0 if args.no_mem_aware else args.low_mem_frac)
+    actuator = Actuator(tracker, memory=mem, hi=args.threshold, top_k=args.top_k,
+                        max_inflight_mb=args.max_inflight_mb,
+                        min_precision=args.min_precision, gate_hi=args.gate_threshold)
+    ioctl = IOPressureController(target=args.adaptive_io) if args.adaptive_io > 0 else None
+    evictor = DeadFileEvictor() if args.evict_dead else None
+
     if args.mode == "static":
-        if os.path.exists(args.model_path):
-            with open(args.model_path, "rb") as f:
-                state = pickle.load(f)
-                ai.frequency_table, ai.context_totals, ai.file_total, ai.file_comm, ai.file_time, ai.comm_total, ai.comm_ext = state
-        else:
-            print(f"Error: Static mode requested but model file {args.model_path} not found.")
-            sys.exit(1)
-            
+        if not os.path.exists(args.model_path):
+            sys.exit(f"Error: static mode needs a trained model at {args.model_path} (run --mode train first).")
+        model.load(args.model_path)
+
     my_pid = os.getpid()
     print(f"Daemon PID: {my_pid}")
-    bpf_text = bpf_source.replace("DAEMON_PID", str(my_pid))
-    idx = bpf_text.find("if (pid_tgid >> 32 == ")
-    if idx != -1:
-        print(f"Compiled BPF snippet: {bpf_text[idx:idx+40]}")
-    b = BPF(text=bpf_text)
+    b = BPF(text=bpf_source, cflags=[f"-DDAEMON_PID={my_pid}"] + (["-DKEEP_LIBS"] if args.include_libs else []))
     b.attach_tracepoint(tp="syscalls:sys_enter_openat", fn_name="trace_enter_openat")
     b.attach_tracepoint(tp="syscalls:sys_exit_openat", fn_name="trace_exit_openat")
     b.attach_tracepoint(tp="syscalls:sys_enter_read", fn_name="trace_enter_read")
     b.attach_tracepoint(tp="syscalls:sys_enter_close", fn_name="trace_enter_close")
 
-    def apply_actuation(predictions, trigger_pid):
-        if args.mode == "train":
-            return # No actuation during pure training
-            
-        for filepath, confidence in predictions:
-            if confidence > 0.5:
-                advice = os.POSIX_FADV_WILLNEED
-            elif confidence < 0.2:
-                advice = os.POSIX_FADV_DONTNEED
-                with open("/tmp/evictions.log", "a") as f:
-                    f.write(f"[DONTNEED] Trigger-PID: {trigger_pid} | Evicting: {filepath} | Confidence: {confidence:.4f}\n")
-            else:
-                continue
-                
-            try:
-                fd = os.open(filepath, os.O_RDONLY | os.O_NONBLOCK)
-                os.posix_fadvise(fd, 0, 0, advice)
-                os.close(fd)
-                if advice == os.POSIX_FADV_WILLNEED:
-                    tracker.record_prefetch(filepath)
-                elif advice == os.POSIX_FADV_DONTNEED:
-                    tracker.record_evict()
-            except OSError:
-                pass
+    counters = {"events": 0, "predict_s": 0.0}
 
     def handle_event(ctx, data, size):
-        event = ct.cast(data, ct.POINTER(Event)).contents
-        filename = event.filename.decode('utf-8', 'replace')
-        comm = event.comm.decode('utf-8', 'replace')
-        
-        hour = datetime.datetime.now().hour
-        time_bucket = hour // 6 
-        
-        if event.type == 1: # OPEN
-            ai.process_access(event.pid, comm, time_bucket, filename)
-            predictions = ai.predict_next(event.pid, comm, time_bucket)
-            if predictions:
-                apply_actuation(predictions, event.pid)
-                
-        elif event.type == 2: # READ
-            tracker.record_read(filename)
+        ev = ct.cast(data, ct.POINTER(Event)).contents
+        filename = ev.filename.decode("utf-8", "replace")
+        if ev.type == EV_OPEN:
+            t0 = time.perf_counter()
+            comm = ev.comm.decode("utf-8", "replace")
+            bucket = datetime.datetime.now().hour // 6
+            model.process_access(ev.pid, comm, bucket, filename)
+            if evictor is not None:
+                evictor.on_open(filename)
+            if ioctl is not None:
+                actuator.max_inflight = ioctl.limit()
+            decisions = []
+            if args.mode != "train":
+                decisions = actuator.submit(model.predict_next(ev.pid, comm, bucket, top_k=args.top_k * 2))
+            if args.trace:
+                ts = datetime.datetime.now().strftime("%H:%M:%S.%f")[:-3]
+                acts = "  ".join(f"{os.path.basename(f)} {c:.2f} -> {o}" for f, c, o in decisions) or "(learning)"
+                print(f"{ts} open pid={ev.pid:<6} {comm:<10} {os.path.basename(filename):<20} | {acts}", flush=True)
+            counters["events"] += 1
+            counters["predict_s"] += time.perf_counter() - t0
+        elif ev.type == EV_CLOSE and evictor is not None:
+            if filename not in tracker.prefetches and evictor.is_dead(filename):
+                actuator._evict_files([filename])
+                evictor.evicted += 1
+                if args.trace:
+                    ts = datetime.datetime.now().strftime("%H:%M:%S.%f")[:-3]
+                    print(f"{ts} close pid={ev.pid:<6} {ev.comm.decode('utf-8', 'replace'):<10} "
+                          f"{os.path.basename(filename):<20} | DONTNEED: reuse distance exceeds cache", flush=True)
+        elif ev.type == EV_READ:
+            age = tracker.record_read(filename)
+            if args.trace and age is not None:
+                ts = datetime.datetime.now().strftime("%H:%M:%S.%f")[:-3]
+                print(f"{ts} read pid={ev.pid:<6} {ev.comm.decode('utf-8', 'replace'):<10} "
+                      f"{os.path.basename(filename):<20} | hit: prefetched {1000 * age:.0f} ms earlier", flush=True)
 
     b["events"].open_ring_buffer(handle_event)
-    sys.stdout.flush()
 
-    global running
     running = True
-    def sig_handler(sig, frame):
-        global running
+
+    def stop(sig, frame):
+        nonlocal running
         running = False
-        print("\n[Daemon] Received SIGINT. Dumping model and shutting down gracefully...")
-        try:
-            with open(args.model_path, "wb") as f:
-                state = (ai.frequency_table, ai.context_totals, ai.file_total, ai.file_comm, ai.file_time, ai.comm_total, ai.comm_ext)
-                pickle.dump(state, f)
-            print(f"Model dumped to {args.model_path} from sig_handler")
-        except Exception as e:
-            print(f"Failed to dump model: {e}")
 
-    signal.signal(signal.SIGINT, sig_handler)
+    signal.signal(signal.SIGINT, stop)
+    signal.signal(signal.SIGTERM, stop)
+    print("[Daemon] Listening for file opens... (Ctrl+C to stop)", flush=True)
 
-    print("[Daemon] Listening for file opens... (Press Ctrl+C to stop)")
-    
-    start_time_log = time.time()
-    last_print_time = start_time_log
+    t_start = last = time.time()
     while running:
-        b.ring_buffer_consume()
-        if time.time() - last_print_time >= 60:
+        b.ring_buffer_poll(timeout=100)        # blocks in-kernel; no busy sleep
+        if time.time() - last >= 60:
             ru = resource.getrusage(resource.RUSAGE_SELF)
-            print(f"[Interval Stats at t={int(time.time()-start_time_log)}s] Max RSS: {ru.ru_maxrss} KB, Tree Size/Active Sequences: {len(ai.frequency_table)}")
-            last_print_time = time.time()
-            sys.stdout.flush()
-        time.sleep(0.1)
+            print(f"[Interval Stats at t={int(time.time() - t_start)}s] Max RSS: {ru.ru_maxrss} KB, "
+                  f"Tree Size/Active Sequences: {model.size}, Actuator: {actuator.stats}", flush=True)
+            last = time.time()
 
-    with open(args.model_path, "wb") as f:
-        state = (ai.frequency_table, ai.context_totals, ai.file_total, ai.file_comm, ai.file_time, ai.comm_total, ai.comm_ext)
-        pickle.dump(state, f)
-    print(f"\nModel dumped to {args.model_path}")
-
+    actuator.close()
+    if args.mode in ("train", "full", "seq"):
+        model.save(args.model_path)
+        print(f"\nModel saved to {args.model_path}")
     if args.mode != "train":
         tracker.print_stats()
-        
+    print(f"[Actuator] {actuator.stats}")
+    if ioctl is not None:
+        print(f"[Adaptive I/O] {ioctl.summary()}")
+    if evictor is not None:
+        print(f"[Dead-file eviction] evicted {evictor.evicted} files after use")
+    ev_n = max(counters["events"], 1)
+    print(f"[Overhead] Avg model+dispatch time per open event: {1e6 * counters['predict_s'] / ev_n:.1f} us "
+          f"({counters['events']} events)")
     ru = resource.getrusage(resource.RUSAGE_SELF)
     print(f"[Overhead] Max RSS (RAM): {ru.ru_maxrss} KB")
     print(f"[Overhead] CPU Time: User {ru.ru_utime:.2f}s, Sys {ru.ru_stime:.2f}s")
+
 
 if __name__ == "__main__":
     main()

@@ -1,0 +1,40 @@
+{
+  "file": "/tmp/builder_7.dat",
+  "file_mb": 10.0,
+  "kernel": "6.8.0-147-generic",
+  "read_ahead_kb": "128",
+  "results": [
+    {
+      "label": "posix_fadvise|whole file",
+      "chunked": false,
+      "resident": 0.125,
+      "min": 0.125,
+      "max": 0.125,
+      "trials": 5
+    },
+    {
+      "label": "readahead(2)|whole file",
+      "chunked": false,
+      "resident": 0.125,
+      "min": 0.125,
+      "max": 0.125,
+      "trials": 5
+    },
+    {
+      "label": "posix_fadvise|1 MB chunks",
+      "chunked": true,
+      "resident": 1.0,
+      "min": 1.0,
+      "max": 1.0,
+      "trials": 5
+    },
+    {
+      "label": "readahead(2)|1 MB chunks",
+      "chunked": true,
+      "resident": 1.0,
+      "min": 1.0,
+      "max": 1.0,
+      "trials": 5
+    }
+  ]
+}

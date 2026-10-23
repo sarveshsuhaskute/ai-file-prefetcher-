@@ -1,0 +1,9 @@
+$ sudo python3 workload.py 12 --scale 0.3
+--- TIME SERIES HIT RATE ---
+[0s - 5s]: 100.00% (Reads: 873)
+[5s - 10s]: 100.00% (Reads: 858)
+[10s - 15s]: 100.00% (Reads: 342)
+RAW DATA -> Total Hits: 2073.0, Total Reads: 2073
+Overall Cache Hit Rate: 100.00% (Total Reads: 2073)
+Read Latency ms: mean=5.41 p50=5.63 p95=6.48 p99=7.44
+

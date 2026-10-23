@@ -1,0 +1,61 @@
+[Config] scale=1.0 noise=0.0 duration=60s iterations=5
+
+--- warm-up 1/1 (discarded)
+    [System] Settling writeback + dropping caches...
+
+--- iteration 1/5: 1. No Daemon (Default Linux Readahead)
+    [System] Settling writeback + dropping caches...
+    hit=nan% reads=1996 lat={'apps': {'compile': {'ops': 6.0, 'mean': 11248.0, 'p50': 11311.0, 'p95': 11497.5}, 'python': {'ops': 1040.0, 'mean': 57.7, 'p50': 57.3, 'p95': 61.6}, 'search': {'ops': 950.0, 'mean': 63.2, 'p50': 63.0, 'p95': 66.1}}, 'mean': 93.94, 'p50': 60.31, 'p95': 65.54, 'p99': 70.05, 'psi_max': 0.0}
+
+--- iteration 1/5: 4. Full Context-Aware AI
+    [System] Settling writeback + dropping caches...
+    hit=nan% reads=1722 lat={'apps': {'compile': {'ops': 5.0, 'mean': 12424.5, 'p50': 12438.2, 'p95': 13089.9}, 'python': {'ops': 853.0, 'mean': 70.4, 'p50': 69.4, 'p95': 83.2}, 'search': {'ops': 864.0, 'mean': 69.4, 'p50': 68.7, 'p95': 77.7}}, 'mean': 105.79, 'p50': 68.95, 'p95': 80.92, 'p99': 98.04, 'psi_max': 0.0}
+
+--- iteration 2/5: 1. No Daemon (Default Linux Readahead)
+    [System] Settling writeback + dropping caches...
+    hit=nan% reads=1938 lat={'apps': {'compile': {'ops': 6.0, 'mean': 11521.9, 'p50': 11793.8, 'p95': 11894.5}, 'python': {'ops': 1009.0, 'mean': 59.5, 'p50': 57.9, 'p95': 67.8}, 'search': {'ops': 923.0, 'mean': 65.0, 'p50': 64.1, 'p95': 70.9}}, 'mean': 97.61, 'p50': 62.15, 'p95': 69.93, 'p99': 82.05, 'psi_max': 0.0}
+
+--- iteration 2/5: 4. Full Context-Aware AI
+    [System] Settling writeback + dropping caches...
+    hit=nan% reads=1520 lat={'apps': {'compile': {'ops': 5.0, 'mean': 13817.1, 'p50': 12561.8, 'p95': 17850.3}, 'python': {'ops': 734.0, 'mean': 81.8, 'p50': 71.4, 'p95': 135.7}, 'search': {'ops': 781.0, 'mean': 76.9, 'p50': 69.4, 'p95': 114.7}}, 'mean': 124.44, 'p50': 70.43, 'p95': 126.46, 'p99': 216.85, 'psi_max': 0.0}
+
+--- iteration 3/5: 1. No Daemon (Default Linux Readahead)
+    [System] Settling writeback + dropping caches...
+    hit=nan% reads=2027 lat={'apps': {'compile': {'ops': 6.0, 'mean': 11091.7, 'p50': 11161.2, 'p95': 11304.1}, 'python': {'ops': 1058.0, 'mean': 56.8, 'p50': 56.0, 'p95': 60.7}, 'search': {'ops': 963.0, 'mean': 62.3, 'p50': 61.9, 'p95': 65.7}}, 'mean': 92.08, 'p50': 59.63, 'p95': 64.63, 'p99': 68.67, 'psi_max': 0.0}
+
+--- iteration 3/5: 4. Full Context-Aware AI
+    [System] Settling writeback + dropping caches...
+    hit=nan% reads=1857 lat={'apps': {'compile': {'ops': 6.0, 'mean': 11345.4, 'p50': 11502.1, 'p95': 11557.9}, 'python': {'ops': 937.0, 'mean': 64.1, 'p50': 64.1, 'p95': 71.1}, 'search': {'ops': 914.0, 'mean': 65.6, 'p50': 65.4, 'p95': 70.8}}, 'mean': 101.31, 'p50': 64.87, 'p95': 71.1, 'p99': 76.71, 'psi_max': 0.0}
+
+--- iteration 4/5: 1. No Daemon (Default Linux Readahead)
+    [System] Settling writeback + dropping caches...
+    hit=nan% reads=2017 lat={'apps': {'compile': {'ops': 6.0, 'mean': 11208.0, 'p50': 11230.1, 'p95': 11910.4}, 'python': {'ops': 1043.0, 'mean': 57.5, 'p50': 56.2, 'p95': 63.8}, 'search': {'ops': 968.0, 'mean': 62.0, 'p50': 61.0, 'p95': 67.3}}, 'mean': 92.84, 'p50': 59.36, 'p95': 66.8, 'p99': 87.56, 'psi_max': 0.0}
+
+--- iteration 4/5: 4. Full Context-Aware AI
+    [System] Settling writeback + dropping caches...
+    hit=nan% reads=1770 lat={'apps': {'compile': {'ops': 5.0, 'mean': 12032.6, 'p50': 12024.7, 'p95': 12148.1}, 'python': {'ops': 892.0, 'mean': 67.3, 'p50': 66.6, 'p95': 77.7}, 'search': {'ops': 873.0, 'mean': 68.8, 'p50': 67.8, 'p95': 75.5}}, 'mean': 101.82, 'p50': 67.21, 'p95': 77.26, 'p99': 107.72, 'psi_max': 0.0}
+
+--- iteration 5/5: 1. No Daemon (Default Linux Readahead)
+    [System] Settling writeback + dropping caches...
+    hit=nan% reads=2025 lat={'apps': {'compile': {'ops': 6.0, 'mean': 11235.6, 'p50': 11281.9, 'p95': 11505.1}, 'python': {'ops': 1046.0, 'mean': 57.4, 'p50': 56.7, 'p95': 61.2}, 'search': {'ops': 973.0, 'mean': 61.7, 'p50': 61.3, 'p95': 64.4}}, 'mean': 92.59, 'p50': 59.74, 'p95': 63.78, 'p99': 72.53, 'psi_max': 0.0}
+
+--- iteration 5/5: 4. Full Context-Aware AI
+    [System] Settling writeback + dropping caches...
+    hit=nan% reads=1768 lat={'apps': {'compile': {'ops': 5.0, 'mean': 12170.2, 'p50': 12204.1, 'p95': 12248.8}, 'python': {'ops': 886.0, 'mean': 67.7, 'p50': 67.1, 'p95': 78.7}, 'search': {'ops': 877.0, 'mean': 68.4, 'p50': 67.7, 'p95': 75.2}}, 'mean': 102.32, 'p50': 67.44, 'p95': 77.33, 'p99': 96.12, 'psi_max': 0.0}
+
+============================================================
+SUMMARY
+============================================================
+Traceback (most recent call last):
+  File "/Users/sarveshkute/Downloads/OS PROJECT/eval_runner.py", line 236, in <module>
+    
+  File "/Users/sarveshkute/Downloads/OS PROJECT/eval_runner.py", line 230, in main
+    print(f"\n{'=' * 60}\nSUMMARY\n{'=' * 60}")
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sarveshkute/Downloads/OS PROJECT/eval_runner.py", line 126, in summarize
+    sd = statistics.stdev(rates) if len(rates) > 1 else 0.0
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/statistics.py", line 974, in stdev
+    return _float_sqrt_of_frac(mss.numerator, mss.denominator)
+                               ^^^^^^^^^^^^^
+AttributeError: 'float' object has no attribute 'numerator'

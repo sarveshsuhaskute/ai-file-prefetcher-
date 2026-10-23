@@ -1,0 +1,3 @@
+Oct 22 19:04:46 lima-prefetch-dev kernel: python3 invoked oom-killer: gfp_mask=0x100cca(GFP_HIGHUSER_MOVABLE), order=0, oom_score_adj=0
+Oct 22 19:04:46 lima-prefetch-dev kernel: oom-kill:constraint=CONSTRAINT_MEMCG,nodemask=(null),cpuset=system.slice,mems_allowed=0,oom_memcg=/system.slice/run-r3c111bff118d477ca5249f8a5e86c9cd.scope,task_memcg=/system.slice/run-r3c111bff118d477ca5249f8a5e86c9cd.scope,task=python3,pid=59014,uid=0
+Oct 22 19:04:46 lima-prefetch-dev kernel: Memory cgroup out of memory: Killed process 59014 (python3) total-vm:575052kB, anon-rss:196528kB, file-rss:8204kB, shmem-rss:0kB, UID:0 pgtables:772kB oom_score_adj:0
