@@ -183,6 +183,8 @@ BASELINES = {
     "full-libs-kf": ("14. Full AI, libraries + in-kernel filtering", "full", ("--include-libs", "--kernel-filter")),
     "full-adapt-auto": ("15. Full AI + adaptive I/O limit, target from paused-prefetch stall", "full", ("--adaptive-io", "auto")),
     "full-evict-kf": ("16. Full AI + dead-file eviction, in-kernel filtering", "full", ("--evict-dead", "--kernel-filter")),
+    "full-idle": ("18. Full AI, prefetch I/O at idle priority", "full", ("--prefetch-ioprio", "idle")),
+    "full-adapt-lat": ("19. Full AI + adaptive I/O limit, latency signal", "full", ("--adaptive-io", "latency")),
     "full-only-build": ("17. Full AI, tracing only the build (--only-comm make,cc1)", "full",
                         ("--kernel-filter", "--only-comm", "make,cc1")),
     "full-adapt": ("10. Full AI + adaptive I/O limit (target stall 0.3)", "full", ("--adaptive-io", "0.3")),

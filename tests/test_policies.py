@@ -5,7 +5,7 @@ import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from prefetch_policies import MB, DeadFileEvictor, IOPressureController
+from prefetch_policies import MB, DeadFileEvictor, IOPressureController, cgroup_memory_max, model_context_budget
 
 
 class FakeClock:
@@ -90,6 +90,24 @@ class IOPressureTests(unittest.TestCase):
         self.assertEqual(w, 64 * MB)                           # probe over: window restored
         self.assertEqual(c.summary()["probes"], 2)
 
+    def test_latency_signal_reads_mean_read_wait(self):
+        ds = tempfile.NamedTemporaryFile("w", delete=False); ds.close()
+        self.addCleanup(os.unlink, ds.name)
+        def disk(reads, ms):
+            open(ds.name, "w").write(f" 253 0 vda {reads} 0 0 {ms} 0 0 0 0 0 0 0\n 7 0 loop0 1 0 0 1 0 0 0 0 0 0 0\n")
+        disk(0, 0)
+        c = IOPressureController(start_mb=32, min_mb=1, max_mb=64, step_mb=8, interval=0.25, clock=self.clock,
+                                 auto_margin=0.5, signal="latency", device="vda", diskstats=ds.name)
+        c.limit()                                              # probe starts
+        reads = ms = 0
+        for _ in range(8):                                     # paused: 4 ms per read
+            reads, ms = reads + 100, ms + 400; disk(reads, ms); self.clock.t += 0.25; c.limit()
+        self.assertAlmostEqual(c.baseline, 4.0)
+        self.assertAlmostEqual(c.target, 6.0)                  # 1.5 x baseline
+        w = c.limit()
+        reads, ms = reads + 100, ms + 1200; disk(reads, ms); self.clock.t += 0.25
+        self.assertEqual(c.limit(), w // 2)                    # 12 ms per read > 6 ms: halve
+
     def test_missing_psi_keeps_start_value(self):
         c = IOPressureController(psi="/nonexistent", start_mb=32)
         self.assertEqual(c.limit(), 32 * MB)
@@ -131,6 +149,29 @@ class DeadFileTests(unittest.TestCase):
             ev.on_open(f"/lib/{i}.pyc")
         self.assertLessEqual(len(ev.last), 1001)
         self.assertLessEqual(len(ev.sizes), 1001)
+
+
+
+class IoprioTests(unittest.TestCase):
+    def test_unknown_class_is_refused(self):
+        from prefetch_actuator import set_thread_ioprio
+        self.assertFalse(set_thread_ioprio("nonsense"))
+
+
+class ModelBudgetTests(unittest.TestCase):
+    def test_budget_follows_the_cgroup_limit(self):
+        root = tempfile.mkdtemp()
+        os.makedirs(os.path.join(root, "app.scope"))
+        open(os.path.join(root, "app.scope", "memory.max"), "w").write(f"{300 * MB}\n")
+        proc = os.path.join(root, "cgroup")
+        open(proc, "w").write("0::/app.scope\n")
+        limit = cgroup_memory_max(cgroup_root=root, proc_cgroup=proc)
+        self.assertEqual(limit, 300 * MB)
+        self.assertEqual(model_context_budget(limit), int(0.15 * 300 * MB / 700))     # ~67k, not 200k
+        open(os.path.join(root, "app.scope", "memory.max"), "w").write("max\n")
+        self.assertIsNone(cgroup_memory_max(cgroup_root=root, proc_cgroup=proc))
+        self.assertEqual(model_context_budget(None), 200_000)
+        self.assertEqual(model_context_budget(50 * MB), 20_000)                       # floor
 
 
 if __name__ == "__main__":

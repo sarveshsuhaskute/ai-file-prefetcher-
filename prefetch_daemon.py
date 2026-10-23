@@ -8,7 +8,7 @@ import sys
 import time
 
 from prefetch_actuator import Actuator, MemoryMonitor, PrecisionTracker
-from prefetch_policies import DeadFileEvictor, IOPressureController
+from prefetch_policies import DeadFileEvictor, IOPressureController, cgroup_memory_max, model_context_budget
 from prefetch_model import PrefetchModel
 
 bpf_source = r"""
@@ -193,9 +193,16 @@ def main():
                         help="fallback (no PSI): throttle when MemAvailable < this fraction of MemTotal")
     parser.add_argument("--adaptive-io", default="0",
                         help="adapt prefetch bytes in flight to I/O pressure: a target stall fraction such as 0.3, "
-                             "or 'auto' to set the target from the stall measured with prefetching paused (0 = off)")
+                             "'auto' (target from the stall measured with prefetching paused), or 'latency' (target 1.5x "
+                             "the device's mean read wait measured with prefetching paused) (0 = off)")
     parser.add_argument("--evict-dead", action="store_true",
                         help="drop a file after use when its reuse distance exceeds the page cache")
+    parser.add_argument("--prefetch-ioprio", choices=["idle", "be"], default=None,
+                        help="I/O priority class of the prefetch worker threads (idle: served after the programs' reads)")
+    parser.add_argument("--io-dev", default=os.environ.get("PREFETCH_IO_DEV", "vda"),
+                        help="block device whose read latency --adaptive-io latency watches")
+    parser.add_argument("--max-contexts", type=int, default=0,
+                        help="model size bound in contexts (0 = auto: 200k, or 15%% of the cgroup's memory.max at ~700 B each)")
     parser.add_argument("--kernel-filter", action="store_true",
                         help="report only the first read() of each open file, and close() only when --evict-dead needs it")
     parser.add_argument("--only-comm", default="",
@@ -211,16 +218,21 @@ def main():
     from bcc import BPF  # imported late so the model/actuator stay testable without bcc
 
     os.makedirs(os.path.dirname(args.model_path), exist_ok=True)
-    model = PrefetchModel(mode=args.mode)
+    limit = cgroup_memory_max()
+    max_contexts = args.max_contexts or model_context_budget(limit)
+    model = PrefetchModel(mode=args.mode, max_contexts=max_contexts)
+    print(f"[Model] max contexts {max_contexts}" + (f" (cgroup memory.max {limit >> 20} MB)" if limit else ""), flush=True)
     tracker = PrecisionTracker()
     mem = MemoryMonitor(psi_threshold=1e9 if args.no_mem_aware else args.psi_threshold,
                         reclaim_mb_s=0.0 if args.no_mem_aware else args.reclaim_mb_s,
                         low_frac=0.0 if args.no_mem_aware else args.low_mem_frac)
     actuator = Actuator(tracker, memory=mem, hi=args.threshold, top_k=args.top_k,
                         max_inflight_mb=args.max_inflight_mb,
-                        min_precision=args.min_precision, gate_hi=args.gate_threshold)
+                        min_precision=args.min_precision, gate_hi=args.gate_threshold, io_class=args.prefetch_ioprio)
     if args.adaptive_io == "auto":
         ioctl = IOPressureController(auto_margin=0.1)
+    elif args.adaptive_io == "latency":
+        ioctl = IOPressureController(auto_margin=0.5, signal="latency", device=args.io_dev)
     else:
         ioctl = IOPressureController(target=float(args.adaptive_io)) if float(args.adaptive_io) > 0 else None
     evictor = DeadFileEvictor() if args.evict_dead else None

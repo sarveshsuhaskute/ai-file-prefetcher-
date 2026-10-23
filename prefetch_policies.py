@@ -27,10 +27,33 @@ import time
 MB = 1 << 20
 
 
+def cgroup_memory_max(cgroup_root="/sys/fs/cgroup", proc_cgroup="/proc/self/cgroup"):
+    """memory.max of this process's cgroup v2 in bytes, or None when unlimited or unknown."""
+    try:
+        rel = open(proc_cgroup).read().strip().split("::", 1)[1]
+        val = open(os.path.join(cgroup_root, rel.lstrip("/"), "memory.max")).read().strip()
+        return None if val == "max" else int(val)
+    except (OSError, IndexError, ValueError):
+        return None
+
+
+def model_context_budget(limit_bytes, share=0.15, bytes_per_context=700, floor=20_000, default=200_000):
+    """Contexts the model may keep. Under a memory limit the daemon's own memory counts against the
+    programs it serves (it was OOM-killed at 300 MB with 183k contexts), so give the model a share of it."""
+    if not limit_bytes:
+        return default
+    return max(floor, min(default, int(share * limit_bytes / bytes_per_context)))
+
+
 class IOPressureController:
     def __init__(self, target=0.3, start_mb=32, min_mb=1, max_mb=128, step_mb=8, interval=0.25,
-                 psi="/proc/pressure/io", clock=time.monotonic, auto_margin=None, probe_every=10.0, probe_len=1.5):
+                 psi="/proc/pressure/io", clock=time.monotonic, auto_margin=None, probe_every=10.0, probe_len=1.5,
+                 signal="stall", device="vda", diskstats="/proc/diskstats"):
         self.target, self.interval, self.psi, self.clock = target, interval, psi, clock
+        # signal "stall": share of time some task waited for I/O (PSI). signal "latency": the device's mean
+        # read wait in ms (/proc/diskstats), which grows with queueing even when the disk is always busy;
+        # in auto mode its target is relative: baseline * (1 + auto_margin).
+        self.signal, self.device, self.diskstats = signal, device, diskstats
         self.auto_margin, self.probe_every, self.probe_len = auto_margin, probe_every, probe_len
         self._probe_end = None           # end time of the current probe (prefetching held at the minimum)
         self._next_probe = None
@@ -45,6 +68,16 @@ class IOPressureController:
         self.last_stall = None
 
     def _read_total(self):
+        if self.signal == "latency":
+            try:
+                with open(self.diskstats) as fh:
+                    for line in fh:
+                        f = line.split()
+                        if len(f) > 6 and f[2] == self.device:
+                            return (int(f[3]), int(f[6]))        # reads completed, ms spent reading
+            except (OSError, ValueError):
+                return None
+            return None
         try:
             with open(self.psi) as fh:
                 for line in fh:
@@ -72,7 +105,8 @@ class IOPressureController:
         if tail:
             m = sum(tail) / len(tail)
             self.baseline = m if self.baseline is None else 0.3 * self.baseline + 0.7 * m
-            self.target = min(0.95, self.baseline + self.auto_margin)
+            self.target = (self.baseline * (1 + self.auto_margin) if self.signal == "latency"
+                           else min(0.95, self.baseline + self.auto_margin))
             self.probes += 1
         self.w, self._probe_end, self._next_probe = self._saved_w, None, now + self.probe_every
         return True
@@ -85,7 +119,11 @@ class IOPressureController:
             if total is not None:
                 stall = None
                 if self._t is not None and now > self._t:
-                    stall = (total - self._total) / ((now - self._t) * 1e6)
+                    if self.signal == "latency":
+                        dn = total[0] - self._total[0]
+                        stall = (total[1] - self._total[1]) / dn if dn > 0 else None
+                    else:
+                        stall = (total - self._total) / ((now - self._t) * 1e6)
                     self.last_stall = stall
                 if self.auto_margin is not None and self._probe(now, stall):
                     self._t, self._total = now, total

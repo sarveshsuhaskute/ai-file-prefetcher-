@@ -150,7 +150,7 @@ def main():
             continue
         print(f"## {p.split('/')[-1]}\n")
         table(rows)
-        variants = report(p, base_prefix="4.", only={"8", "9", "10", "11", "12", "15", "16"})
+        variants = report(p, base_prefix="4.", only={"8", "9", "10", "11", "12", "15", "16", "18", "19"})
         if variants:
             print("Against Full AI:\n")
             table(variants)

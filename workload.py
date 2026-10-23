@@ -8,6 +8,9 @@ import sys
 
 libc = ctypes.CDLL("libc.so.6" if sys.platform.startswith("linux") else None)  # workload itself needs Linux (mincore/prctl)
 
+# where the test files live; a mount on a slower device can be chosen with PREFETCH_DATA_DIR
+DATA_DIR = os.environ.get("PREFETCH_DATA_DIR", "/tmp")
+
 def set_comm(name):
     libc.prctl(15, name.encode()[:15], 0, 0, 0)
 
@@ -59,7 +62,7 @@ def run_actor(name, prefix, n, duration, stats_queue, noise, shift_to=None, thin
         while time.time() < end:
             now = time.time()
             base = n if (shift_to and now >= shift_time) else 0   # context shift at t/2
-            f = f"/tmp/{prefix}_{base + pick(i, n, noise)}.dat"
+            f = f"{DATA_DIR}/{prefix}_{base + pick(i, n, noise)}.dat"
             hr, lat = do_read(f)
             hits.append((int((now - start) // 5), hr, lat))
             time.sleep(think)                       # per-file 'processing' time = idle I/O to overlap
@@ -76,7 +79,7 @@ def setup_files(scale):
     chunk = os.urandom(10 * 1024 * 1024)
     for prefix, n in (("builder", 2 * b), ("tailer", t), ("processor", p)):
         for i in range(n):
-            with open(f"/tmp/{prefix}_{i}.dat", "wb") as out:
+            with open(f"{DATA_DIR}/{prefix}_{i}.dat", "wb") as out:
                 out.write(chunk)
 
 
