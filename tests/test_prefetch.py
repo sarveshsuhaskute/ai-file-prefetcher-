@@ -60,6 +60,21 @@ class ModelTests(unittest.TestCase):
             feed(m2, ["a", "b", "c"])           # rebuild history only
             self.assertEqual(before, m2.predict_next(1, "app", 0))
 
+    def test_min_conf_pruning_changes_nothing_above_threshold(self):
+        import random
+        rng = random.Random(7)
+        files = [f"/d/f{i}{rng.choice(['.c', '.h', '.py', ''])}" for i in range(60)]
+        for mode in ("full", "seq"):
+            m = PrefetchModel(mode)
+            for pid in range(1, 9):                      # partly predictable streams from several processes
+                feed(m, [files[(i * pid) % 60] if rng.random() < 0.7 else rng.choice(files) for i in range(400)],
+                     pid=pid, comm=rng.choice(["cc1", "grep", "python3"]), bucket=pid % 4)
+            for pid in range(1, 9):
+                for comm in ("cc1", "grep", "python3"):
+                    for thr in (0.3, 0.5, 0.9):
+                        full = [x for x in m.predict_next(pid, comm, pid % 4) if x[1] >= thr]
+                        self.assertEqual(m.predict_next(pid, comm, pid % 4, min_conf=thr), full)
+
     def test_prune_bounds_memory(self):
         m = PrefetchModel("seq", max_contexts=50)
         for i in range(2000):

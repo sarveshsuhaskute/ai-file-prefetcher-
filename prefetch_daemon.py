@@ -27,6 +27,7 @@ BPF_RINGBUF_OUTPUT(events, 8);
 
 struct val_t {
     char filename[256];
+    u32 read_sent;          // --kernel-filter: only the first read() of an open file is reported
 };
 BPF_HASH(infotmp, u64, struct val_t);
 
@@ -35,6 +36,11 @@ struct fd_key_t {
     u32 fd;
 };
 BPF_HASH(fdmap, struct fd_key_t, struct val_t);
+
+struct comm_key_t {
+    char comm[16];
+};
+BPF_HASH(comms, struct comm_key_t, u8);   // --only-comm allow-list, filled from userspace
 
 static inline bool filter_noise(const char *filename) {
     if (filename[0] == 0) return true;
@@ -68,6 +74,11 @@ static inline bool filter_noise(const char *filename) {
 int trace_enter_openat(struct tracepoint__syscalls__sys_enter_openat *ctx) {
     u64 pid_tgid = bpf_get_current_pid_tgid();
     if (pid_tgid >> 32 == DAEMON_PID) return 0;
+#ifdef FILTER_COMM
+    struct comm_key_t ck = {};
+    bpf_get_current_comm(&ck.comm, sizeof(ck.comm));
+    if (comms.lookup(&ck) == 0) return 0;
+#endif
     struct val_t val = {};
     bpf_probe_read_user_str(&val.filename, sizeof(val.filename), ctx->filename);
     if (filter_noise(val.filename)) return 0;
@@ -109,6 +120,11 @@ int trace_enter_read(struct tracepoint__syscalls__sys_enter_read *ctx) {
     struct fd_key_t key = {.pid = pid, .fd = fd};
     struct val_t *valp = fdmap.lookup(&key);
     if (valp) {
+#ifdef FIRST_READ_ONLY
+        // the precision tracker only needs the first read after a prefetch: drop the rest in the kernel
+        if (valp->read_sent) return 0;
+        valp->read_sent = 1;
+#endif
         struct event_t *event = events.ringbuf_reserve(sizeof(struct event_t));
         if (event) {
             event->pid = pid;
@@ -129,6 +145,7 @@ int trace_enter_close(struct tracepoint__syscalls__sys_enter_close *ctx) {
     struct fd_key_t key = {.pid = pid, .fd = fd};
     struct val_t *valp = fdmap.lookup(&key);
     if (valp) {
+#ifdef SEND_CLOSE
         struct event_t *event = events.ringbuf_reserve(sizeof(struct event_t));
         if (event) {
             event->pid = pid;
@@ -137,6 +154,7 @@ int trace_enter_close(struct tracepoint__syscalls__sys_enter_close *ctx) {
             __builtin_memcpy(&event->filename, valp->filename, sizeof(event->filename));
             events.ringbuf_submit(event, 0);
         }
+#endif
         fdmap.delete(&key);
     }
     return 0;
@@ -173,10 +191,15 @@ def main():
                         help="throttle prefetching when memory PSI some-avg10 (%% stalled) >= this")
     parser.add_argument("--low-mem-frac", type=float, default=0.10,
                         help="fallback (no PSI): throttle when MemAvailable < this fraction of MemTotal")
-    parser.add_argument("--adaptive-io", type=float, default=0.0,
-                        help="adapt prefetch bytes in flight to I/O pressure: target stall fraction, e.g. 0.3 (0 = off)")
+    parser.add_argument("--adaptive-io", default="0",
+                        help="adapt prefetch bytes in flight to I/O pressure: a target stall fraction such as 0.3, "
+                             "or 'auto' to set the target from the stall measured with prefetching paused (0 = off)")
     parser.add_argument("--evict-dead", action="store_true",
                         help="drop a file after use when its reuse distance exceeds the page cache")
+    parser.add_argument("--kernel-filter", action="store_true",
+                        help="report only the first read() of each open file, and close() only when --evict-dead needs it")
+    parser.add_argument("--only-comm", default="",
+                        help="comma-separated process names to trace (in-kernel allow-list), e.g. make,cc1,python3")
     parser.add_argument("--include-libs", action="store_true",
                         help="also trace .so and .pyc opens (needed for application start-up workloads)")
     parser.add_argument("--trace", action="store_true",
@@ -196,7 +219,10 @@ def main():
     actuator = Actuator(tracker, memory=mem, hi=args.threshold, top_k=args.top_k,
                         max_inflight_mb=args.max_inflight_mb,
                         min_precision=args.min_precision, gate_hi=args.gate_threshold)
-    ioctl = IOPressureController(target=args.adaptive_io) if args.adaptive_io > 0 else None
+    if args.adaptive_io == "auto":
+        ioctl = IOPressureController(auto_margin=0.1)
+    else:
+        ioctl = IOPressureController(target=float(args.adaptive_io)) if float(args.adaptive_io) > 0 else None
     evictor = DeadFileEvictor() if args.evict_dead else None
 
     if args.mode == "static":
@@ -206,7 +232,16 @@ def main():
 
     my_pid = os.getpid()
     print(f"Daemon PID: {my_pid}")
-    b = BPF(text=bpf_source, cflags=[f"-DDAEMON_PID={my_pid}"] + (["-DKEEP_LIBS"] if args.include_libs else []))
+    cflags = [f"-DDAEMON_PID={my_pid}"] + (["-DKEEP_LIBS"] if args.include_libs else [])
+    if args.kernel_filter:
+        cflags += ["-DFIRST_READ_ONLY"] + (["-DSEND_CLOSE"] if args.evict_dead else [])
+    else:
+        cflags += ["-DSEND_CLOSE"]
+    if args.only_comm:
+        cflags += ["-DFILTER_COMM"]
+    b = BPF(text=bpf_source, cflags=cflags)
+    for name in filter(None, args.only_comm.split(",")):
+        b["comms"][b["comms"].Key(name.encode()[:15])] = ct.c_uint8(1)
     b.attach_tracepoint(tp="syscalls:sys_enter_openat", fn_name="trace_enter_openat")
     b.attach_tracepoint(tp="syscalls:sys_exit_openat", fn_name="trace_exit_openat")
     b.attach_tracepoint(tp="syscalls:sys_enter_read", fn_name="trace_enter_read")
@@ -228,7 +263,8 @@ def main():
                 actuator.max_inflight = ioctl.limit()
             decisions = []
             if args.mode != "train":
-                decisions = actuator.submit(model.predict_next(ev.pid, comm, bucket, top_k=args.top_k * 2))
+                decisions = actuator.submit(model.predict_next(ev.pid, comm, bucket, top_k=args.top_k * 2,
+                                                                min_conf=args.threshold))
             if args.trace:
                 ts = datetime.datetime.now().strftime("%H:%M:%S.%f")[:-3]
                 acts = "  ".join(f"{os.path.basename(f)} {c:.2f} -> {o}" for f, c, o in decisions) or "(learning)"

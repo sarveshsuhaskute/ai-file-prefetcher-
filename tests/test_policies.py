@@ -57,6 +57,39 @@ class IOPressureTests(unittest.TestCase):
         self.assertEqual(self.c.limit(), 1 * MB)
         self.assertGreater(self.c.summary()["cuts"], 0)
 
+    def auto(self):
+        self.total = 0
+        write_psi(self.fh.name, 0)
+        return IOPressureController(start_mb=32, min_mb=1, max_mb=64, step_mb=8, interval=0.25, psi=self.fh.name,
+                                    clock=self.clock, auto_margin=0.1, probe_every=10.0, probe_len=1.5)
+
+    def auto_step(self, c, stall_fraction):
+        self.total += int(stall_fraction * 0.25 * 1e6)
+        write_psi(self.fh.name, self.total)
+        self.clock.t += 0.25
+        return c.limit()
+
+    def test_auto_target_sits_above_the_disks_own_stall(self):
+        c = self.auto()
+        self.assertEqual(c.limit(), 1 * MB)                   # first call starts a probe: prefetching paused
+        for _ in range(30):
+            w = self.auto_step(c, 0.6)                         # the disk stalls 60% whatever we do
+        self.assertAlmostEqual(c.baseline, 0.6, places=2)
+        self.assertAlmostEqual(c.target, 0.7, places=2)
+        self.assertEqual(w, 64 * MB)                           # a fixed 0.3 target would have cut to 1 MB
+
+    def test_probe_pauses_then_restores_the_window(self):
+        c = self.auto()
+        c.limit()
+        for _ in range(30):
+            self.auto_step(c, 0.6)
+        self.clock.t = c._next_probe - 0.25
+        self.assertEqual(self.auto_step(c, 0.6), 1 * MB)      # next probe: held at the minimum
+        for _ in range(6):
+            w = self.auto_step(c, 0.6)
+        self.assertEqual(w, 64 * MB)                           # probe over: window restored
+        self.assertEqual(c.summary()["probes"], 2)
+
     def test_missing_psi_keeps_start_value(self):
         c = IOPressureController(psi="/nonexistent", start_mb=32)
         self.assertEqual(c.limit(), 32 * MB)
