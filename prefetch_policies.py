@@ -148,6 +148,58 @@ class IOPressureController:
         return out
 
 
+class ABController:
+    """--adaptive-io ab: decide online whether prefetching pays, by testing both ways.
+
+    Every `period` seconds the current mode (prefetching on or off) is flipped for `probe` seconds, and
+    the rate at which the traced programs open files in that window is compared with the window just
+    before it. Opens per second track the programs' progress (on the synthetic workload they are exactly
+    its throughput). The faster mode is kept until the next test. On a device that is saturated by the
+    programs' own reads, prefetching loses (measured: -56% throughput at 99% precision) and is switched
+    off; where it wins, it stays on. The cost is the probe windows: probe / period of the time.
+    """
+
+    def __init__(self, period=15.0, probe=2.0, margin=0.05, clock=time.monotonic):
+        self.period, self.probe, self.margin, self.clock = period, probe, margin, clock
+        self.on = True                    # current mode outside probes
+        self.t0 = None                    # start of the current phase
+        self.probing = False
+        self.opens = []                   # open timestamps in the last period + probe
+        self.tests = self.flips = 0
+        self.on_time = 0.0
+        self._last = None
+
+    def _rate(self, a, b):
+        return sum(1 for t in self.opens if a <= t < b) / max(b - a, 1e-9)
+
+    def allow(self):
+        """Record one open; True if this open may trigger prefetching."""
+        now = self.clock()
+        if self.t0 is None:
+            self.t0 = now
+        if self._last is not None and (self.on != self.probing):
+            self.on_time += now - self._last          # time spent with prefetching enabled
+        self._last = now
+        self.opens.append(now)
+        if not self.probing and now - self.t0 >= self.period:
+            self.probing, self.t_probe = True, now
+        elif self.probing and now - self.t_probe >= self.probe:
+            flipped = self._rate(self.t_probe, now)
+            current = self._rate(self.t_probe - self.probe, self.t_probe)
+            self.tests += 1
+            if flipped > current * (1 + self.margin):
+                self.on = not self.on
+                self.flips += 1
+            self.probing, self.t0 = False, now
+            cutoff = now - self.probe
+            self.opens = [t for t in self.opens if t >= cutoff]
+        return self.on != self.probing
+
+    def summary(self):
+        return {"tests": self.tests, "flips": self.flips, "prefetching": "on" if self.on else "off",
+                "on_time_s": round(self.on_time, 1)}
+
+
 class DeadFileEvictor:
     def __init__(self, margin=0.9, refresh=1.0, meminfo="/proc/meminfo", cgroup_root="/sys/fs/cgroup",
                  sizeof=None, clock=time.monotonic, max_files=50_000):

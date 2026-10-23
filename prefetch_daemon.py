@@ -8,7 +8,8 @@ import sys
 import time
 
 from prefetch_actuator import Actuator, MemoryMonitor, PrecisionTracker
-from prefetch_policies import DeadFileEvictor, IOPressureController, cgroup_memory_max, model_context_budget
+from prefetch_policies import (ABController, DeadFileEvictor, IOPressureController, cgroup_memory_max,
+                               model_context_budget)
 from prefetch_model import PrefetchModel
 
 bpf_source = r"""
@@ -194,7 +195,8 @@ def main():
     parser.add_argument("--adaptive-io", default="0",
                         help="adapt prefetch bytes in flight to I/O pressure: a target stall fraction such as 0.3, "
                              "'auto' (target from the stall measured with prefetching paused), or 'latency' (target 1.5x "
-                             "the device's mean read wait measured with prefetching paused) (0 = off)")
+                             "the device's mean read wait measured with prefetching paused), or 'ab' (switch prefetching "
+                             "off when a periodic on/off test shows the programs open files faster without it) (0 = off)")
     parser.add_argument("--evict-dead", action="store_true",
                         help="drop a file after use when its reuse distance exceeds the page cache")
     parser.add_argument("--prefetch-ioprio", choices=["idle", "be"], default=None,
@@ -229,7 +231,10 @@ def main():
     actuator = Actuator(tracker, memory=mem, hi=args.threshold, top_k=args.top_k,
                         max_inflight_mb=args.max_inflight_mb,
                         min_precision=args.min_precision, gate_hi=args.gate_threshold, io_class=args.prefetch_ioprio)
-    if args.adaptive_io == "auto":
+    abctl = ABController() if args.adaptive_io == "ab" else None
+    if args.adaptive_io == "ab":
+        ioctl = None
+    elif args.adaptive_io == "auto":
         ioctl = IOPressureController(auto_margin=0.1)
     elif args.adaptive_io == "latency":
         ioctl = IOPressureController(auto_margin=0.5, signal="latency", device=args.io_dev)
@@ -274,7 +279,7 @@ def main():
             if ioctl is not None:
                 actuator.max_inflight = ioctl.limit()
             decisions = []
-            if args.mode != "train":
+            if args.mode != "train" and (abctl is None or abctl.allow()):
                 decisions = actuator.submit(model.predict_next(ev.pid, comm, bucket, top_k=args.top_k * 2,
                                                                 min_conf=args.threshold))
             if args.trace:
@@ -328,6 +333,8 @@ def main():
     print(f"[Actuator] {actuator.stats}")
     if ioctl is not None:
         print(f"[Adaptive I/O] {ioctl.summary()}")
+    if abctl is not None:
+        print(f"[Adaptive I/O] {abctl.summary()}")
     if evictor is not None:
         print(f"[Dead-file eviction] evicted {evictor.evicted} files after use")
     ev_n = max(counters["events"], 1)

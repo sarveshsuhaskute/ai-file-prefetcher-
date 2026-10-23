@@ -185,6 +185,7 @@ BASELINES = {
     "full-evict-kf": ("16. Full AI + dead-file eviction, in-kernel filtering", "full", ("--evict-dead", "--kernel-filter")),
     "full-idle": ("18. Full AI, prefetch I/O at idle priority", "full", ("--prefetch-ioprio", "idle")),
     "full-adapt-lat": ("19. Full AI + adaptive I/O limit, latency signal", "full", ("--adaptive-io", "latency")),
+    "full-ab": ("20. Full AI + on/off self-test (prefetch only when it pays)", "full", ("--adaptive-io", "ab")),
     "full-only-build": ("17. Full AI, tracing only the build (--only-comm make,cc1)", "full",
                         ("--kernel-filter", "--only-comm", "make,cc1")),
     "full-adapt": ("10. Full AI + adaptive I/O limit (target stall 0.3)", "full", ("--adaptive-io", "0.3")),

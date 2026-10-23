@@ -5,7 +5,8 @@ import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from prefetch_policies import MB, DeadFileEvictor, IOPressureController, cgroup_memory_max, model_context_budget
+from prefetch_policies import (MB, ABController, DeadFileEvictor, IOPressureController, cgroup_memory_max,
+                               model_context_budget)
 
 
 class FakeClock:
@@ -150,6 +151,28 @@ class DeadFileTests(unittest.TestCase):
         self.assertLessEqual(len(ev.last), 1001)
         self.assertLessEqual(len(ev.sizes), 1001)
 
+
+
+class ABTests(unittest.TestCase):
+    def run_workload(self, rate_on, rate_off, seconds=120):
+        """Programs open files at rate_on/s while prefetching is allowed, rate_off/s otherwise."""
+        clock = FakeClock()
+        ab = ABController(period=15.0, probe=2.0, clock=clock)
+        allowed = True
+        while clock.t < seconds:
+            clock.t += 1.0 / (rate_on if allowed else rate_off)
+            allowed = ab.allow()
+        return ab
+
+    def test_switches_prefetching_off_when_it_hurts(self):
+        ab = self.run_workload(rate_on=15, rate_off=34)           # slow device: -56% with prefetching
+        self.assertFalse(ab.on)
+        self.assertGreaterEqual(ab.summary()["tests"], 5)
+
+    def test_keeps_prefetching_when_it_helps(self):
+        ab = self.run_workload(rate_on=180, rate_off=136)         # memory pressure: +32% with prefetching
+        self.assertTrue(ab.on)
+        self.assertEqual(ab.summary()["flips"], 0)
 
 
 class IoprioTests(unittest.TestCase):
