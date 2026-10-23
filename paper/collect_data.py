@@ -25,7 +25,7 @@ def sig(name):
     if not os.path.exists(p):
         return {}
     out = {}
-    for tag, rows in (("vs_none", stats.report(p)), ("vs_full", stats.report(p, base_prefix="4.", only={"8", "9", "10", "11", "12", "15", "16"})),
+    for tag, rows in (("vs_none", stats.report(p)), ("vs_full", stats.report(p, base_prefix="4.", only={"8", "9", "10", "11", "12", "15", "16", "18", "19", "20", "21"})),
                       ("vs_libs", stats.report(p, base_prefix="13.", only={"4", "12", "14", "17"}))):
         for cfg, metric, _na, _nb, d, lo, hi, pv in rows:
             out.setdefault(tag, {}).setdefault(cfg.split(".")[0], {})[metric] = [round(d, 2), round(lo, 2), round(hi, 2), pv]
@@ -56,7 +56,8 @@ def daemon_cost(name):
                         ("events", r"per open event: [\d.]+ us \((\d+) events\)"), ("us_per_event", r"per open event: ([\d.]+) us"),
                         ("cpu_user", r"CPU Time: User ([\d.]+)s"), ("cpu_sys", r"Sys ([\d.]+)s"), ("rss_kb", r"Max RSS \(RAM\): (\d+) KB"),
                         ("evicted_dead", r"evicted (\d+) files after use"), ("adapt_cuts", r"'cuts': (\d+)"),
-                        ("adapt_samples", r"'samples': (\d+)"), ("adapt_avg_mb", r"'avg_limit_mb': ([\d.]+)")):
+                        ("adapt_samples", r"'samples': (\d+)"), ("adapt_avg_mb", r"'avg_limit_mb': ([\d.]+)"),
+                        ("ab_tests", r"'tests': (\d+)"), ("ab_flips", r"'flips': (\d+)"), ("ab_on_s", r"'on_time_s': ([\d.]+)")):
             m = re.findall(rx, blk)
             if m:
                 d[key] = sum(float(x) for x in m) / len(m)     # mean over runs where printed once per run
@@ -67,7 +68,8 @@ def daemon_cost(name):
 LOGS = ["v6_pressure.log", "v6_noise.log", "v3_slowdisk400MBs_think10ms_ballast9GB_chunked_willneed.log",
         "v7_apps_unlimited.log", "v7_apps_mem400.log", "v7_apps_mem300.log", "v8_slowdisk_think100.log",
         "v8_slowdisk_think10.log", "v8_pressure.log", "v8_apps_mem400.log", "vm2_pressure.log", "vm2_noise.log", "v9_apps_mem300.log", "v9_apps_unlimited.log",
-        "v9_pressure.log", "v9_slowdisk_think10.log"]
+        "v9_pressure.log", "v9_slowdisk_think10.log", "v10_slowdev_think10.log", "v10_apps_mem300_evict.log",
+        "v10_cgroupcap_idle.log", "v11_slowdev_ab.log", "v11_pressure_ab.log", "v12_slowdev_ab.log"]
 
 
 data = {
@@ -87,10 +89,17 @@ data = {
     "apps9": {k: apps(f"v9_apps_{k}.log") for k in ("mem300", "unlimited")},
     "v9_pressure": load("v9_pressure.log"),
     "v9_slow10": load("v9_slowdisk_think10.log"),
+    "v10_slowdev": load("v10_slowdev_think10.log"),
+    "v10_cgcap": load("v10_cgroupcap_idle.log"),
+    "v11_slowdev": load("v11_slowdev_ab.log"),
+    "v11_pressure": load("v11_pressure_ab.log"),
+    "v12_slowdev": load("v12_slowdev_ab.log"),
+    "apps10": apps("v10_apps_mem300_evict.log"),
     "cost": {n.rsplit(".", 1)[0]: daemon_cost(n) for n in ("v7_apps_mem300.log", "v8_apps_mem400.log", "v8_pressure.log",
                                                             "v8_slowdisk_think10.log", "v8_slowdisk_think100.log", "vm2_pressure.log",
                                                             "v9_apps_mem300.log", "v9_apps_unlimited.log", "v9_pressure.log",
-                                                            "v9_slowdisk_think10.log")},
+                                                            "v9_slowdisk_think10.log", "v10_slowdev_think10.log", "v11_pressure_ab.log",
+                                                            "v11_slowdev_ab.log", "v12_slowdev_ab.log")},
     "sig": {n.rsplit(".", 1)[0]: sig(n) for n in LOGS},
     "willneed": json.load(open(os.path.join(RAW, "willneed_probe.json"))) if os.path.exists(os.path.join(RAW, "willneed_probe.json")) else None,
 }
