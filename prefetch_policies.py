@@ -21,6 +21,8 @@ DeadFileEvictor (--evict-dead)
     the original design: the model's view of the access pattern now decides what leaves the
     cache, not only what enters it.
 """
+import ctypes
+import mmap
 import os
 import time
 
@@ -159,8 +161,12 @@ class ABController:
     off; where it wins, it stays on. The cost is the probe windows: probe / period of the time.
     """
 
-    def __init__(self, period=15.0, probe=2.0, margin=0.05, clock=time.monotonic):
+    def __init__(self, period=20.0, probe=8.0, settle=4.0, margin=0.05, max_period=160.0, clock=time.monotonic):
+        # The first `settle` seconds of each probe are ignored: the page cache needs about one pass over the
+        # programs' files to reflect the new mode (measured: 2 s probes missed a -71% loss on a slow device).
+        # After a test that confirms the current mode the period doubles, so a steady workload pays less.
         self.period, self.probe, self.margin, self.clock = period, probe, margin, clock
+        self.settle, self.base_period, self.max_period = settle, period, max_period
         self.on = True                    # current mode outside probes
         self.t0 = None                    # start of the current phase
         self.probing = False
@@ -184,12 +190,16 @@ class ABController:
         if not self.probing and now - self.t0 >= self.period:
             self.probing, self.t_probe = True, now
         elif self.probing and now - self.t_probe >= self.probe:
-            flipped = self._rate(self.t_probe, now)
-            current = self._rate(self.t_probe - self.probe, self.t_probe)
+            span = self.probe - self.settle
+            flipped = self._rate(self.t_probe + self.settle, now)
+            current = self._rate(self.t_probe - span, self.t_probe)
             self.tests += 1
             if flipped > current * (1 + self.margin):
                 self.on = not self.on
                 self.flips += 1
+                self.period = self.base_period
+            else:
+                self.period = min(self.max_period, self.period * 2)
             self.probing, self.t0 = False, now
             cutoff = now - self.probe
             self.opens = [t for t in self.opens if t >= cutoff]
@@ -198,6 +208,78 @@ class ABController:
     def summary(self):
         return {"tests": self.tests, "flips": self.flips, "prefetching": "on" if self.on else "off",
                 "on_time_s": round(self.on_time, 1)}
+
+
+def residency(path, max_bytes=64 << 20):
+    """Fraction of the file's first max_bytes resident in the page cache (mmap + mincore), or None."""
+    try:
+        fd = os.open(path, os.O_RDONLY)
+    except OSError:
+        return None
+    try:
+        size = min(os.fstat(fd).st_size, max_bytes)
+        if size == 0:
+            return None
+        libc = ctypes.CDLL(None, use_errno=True)
+        libc.mmap.restype = ctypes.c_void_p
+        libc.mmap.argtypes = [ctypes.c_void_p, ctypes.c_size_t, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_long]
+        libc.mincore.argtypes = [ctypes.c_void_p, ctypes.c_size_t, ctypes.c_char_p]
+        libc.munmap.argtypes = [ctypes.c_void_p, ctypes.c_size_t]
+        addr = libc.mmap(None, size, mmap.PROT_READ, mmap.MAP_SHARED, fd, 0)
+        if addr is None or addr == ctypes.c_void_p(-1).value:
+            return None
+        try:
+            n = (size + mmap.PAGESIZE - 1) // mmap.PAGESIZE
+            vec = ctypes.create_string_buffer(n)
+            if libc.mincore(addr, size, vec) != 0:
+                return None
+            return sum(1 for b in vec.raw if b & 1) / n
+        finally:
+            libc.munmap(addr, size)
+    finally:
+        os.close(fd)
+
+
+class TimelinessGate:
+    """--timeliness-gate: stop prefetching when prefetches do not arrive in time.
+
+    A prefetch is useful only if its pages are resident when the program reads the file. On each first
+    read of a prefetched file the daemon measures how much of it is resident (mincore). When the running
+    average falls below `low`, prefetching drops to a trickle (one open in `trickle`), which keeps the
+    measurement going; it resumes above `high`. On a device already saturated by the programs' own reads,
+    prefetches arrive late or are evicted before use, so they are turned off; where they arrive in time
+    they stay on. Unlike an on/off test it needs no probe and reacts within a few dozen reads.
+    """
+
+    def __init__(self, low=0.3, high=0.5, alpha=0.1, min_samples=20, trickle=8, measure=residency):
+        self.low, self.high, self.alpha, self.min_samples, self.trickle = low, high, alpha, min_samples, trickle
+        self.measure = measure
+        self.ewma = 1.0
+        self.samples = 0
+        self.on = True
+        self.opens = self.skipped = self.switches = 0
+
+    def on_useful_read(self, path):
+        r = self.measure(path)
+        if r is None:
+            return
+        self.samples += 1
+        self.ewma += self.alpha * (r - self.ewma)
+        if self.on and self.samples >= self.min_samples and self.ewma < self.low:
+            self.on, self.switches = False, self.switches + 1
+        elif not self.on and self.ewma > self.high:
+            self.on, self.switches = True, self.switches + 1
+
+    def allow(self):
+        self.opens += 1
+        if self.on or self.opens % self.trickle == 0:
+            return True
+        self.skipped += 1
+        return False
+
+    def summary(self):
+        return {"samples": self.samples, "residency_ewma": round(self.ewma, 2), "switches": self.switches,
+                "state": "on" if self.on else "trickle", "skipped_opens": self.skipped}
 
 
 class DeadFileEvictor:

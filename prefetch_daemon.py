@@ -8,8 +8,8 @@ import sys
 import time
 
 from prefetch_actuator import Actuator, MemoryMonitor, PrecisionTracker
-from prefetch_policies import (ABController, DeadFileEvictor, IOPressureController, cgroup_memory_max,
-                               model_context_budget)
+from prefetch_policies import (ABController, DeadFileEvictor, IOPressureController, TimelinessGate,
+                               cgroup_memory_max, model_context_budget)
 from prefetch_model import PrefetchModel
 
 bpf_source = r"""
@@ -199,6 +199,8 @@ def main():
                              "off when a periodic on/off test shows the programs open files faster without it) (0 = off)")
     parser.add_argument("--evict-dead", action="store_true",
                         help="drop a file after use when its reuse distance exceeds the page cache")
+    parser.add_argument("--timeliness-gate", action="store_true",
+                        help="drop to a trickle of prefetches while prefetched files are mostly not resident when read")
     parser.add_argument("--prefetch-ioprio", choices=["idle", "be"], default=None,
                         help="I/O priority class of the prefetch worker threads (idle: served after the programs' reads)")
     parser.add_argument("--io-dev", default=os.environ.get("PREFETCH_IO_DEV", "vda"),
@@ -232,6 +234,7 @@ def main():
                         max_inflight_mb=args.max_inflight_mb,
                         min_precision=args.min_precision, gate_hi=args.gate_threshold, io_class=args.prefetch_ioprio)
     abctl = ABController() if args.adaptive_io == "ab" else None
+    tgate = TimelinessGate() if args.timeliness_gate else None
     if args.adaptive_io == "ab":
         ioctl = None
     elif args.adaptive_io == "auto":
@@ -279,7 +282,7 @@ def main():
             if ioctl is not None:
                 actuator.max_inflight = ioctl.limit()
             decisions = []
-            if args.mode != "train" and (abctl is None or abctl.allow()):
+            if args.mode != "train" and (abctl is None or abctl.allow()) and (tgate is None or tgate.allow()):
                 decisions = actuator.submit(model.predict_next(ev.pid, comm, bucket, top_k=args.top_k * 2,
                                                                 min_conf=args.threshold))
             if args.trace:
@@ -298,6 +301,8 @@ def main():
                           f"{os.path.basename(filename):<20} | DONTNEED: reuse distance exceeds cache", flush=True)
         elif ev.type == EV_READ:
             age = tracker.record_read(filename)
+            if tgate is not None and age is not None:
+                tgate.on_useful_read(filename)
             if args.trace and age is not None:
                 ts = datetime.datetime.now().strftime("%H:%M:%S.%f")[:-3]
                 print(f"{ts} read pid={ev.pid:<6} {ev.comm.decode('utf-8', 'replace'):<10} "
@@ -335,6 +340,8 @@ def main():
         print(f"[Adaptive I/O] {ioctl.summary()}")
     if abctl is not None:
         print(f"[Adaptive I/O] {abctl.summary()}")
+    if tgate is not None:
+        print(f"[Timeliness gate] {tgate.summary()}")
     if evictor is not None:
         print(f"[Dead-file eviction] evicted {evictor.evicted} files after use")
     ev_n = max(counters["events"], 1)

@@ -134,7 +134,7 @@ def run_workload_iteration(daemon_mode, duration, scale, noise, workload, think_
             daemon_proc.kill()
         log.seek(0)
         daemon_lines = [l.strip() for l in log if l.startswith(
-            ("[Precision", "[Interval Stats", "[Overhead]", "[Actuator]", "[Adaptive I/O]", "[Dead-file"))]
+            ("[Precision", "[Interval Stats", "[Overhead]", "[Actuator]", "[Adaptive I/O]", "[Dead-file", "[Timeliness", "[Model]"))]
         log.close()
         os.unlink(log.name)
     lat["psi_max"] = psi_max[0]
@@ -186,6 +186,7 @@ BASELINES = {
     "full-idle": ("18. Full AI, prefetch I/O at idle priority", "full", ("--prefetch-ioprio", "idle")),
     "full-adapt-lat": ("19. Full AI + adaptive I/O limit, latency signal", "full", ("--adaptive-io", "latency")),
     "full-ab": ("20. Full AI + on/off self-test (prefetch only when it pays)", "full", ("--adaptive-io", "ab")),
+    "full-tgate": ("21. Full AI + timeliness gate (prefetch while prefetches arrive in time)", "full", ("--timeliness-gate",)),
     "full-only-build": ("17. Full AI, tracing only the build (--only-comm make,cc1)", "full",
                         ("--kernel-filter", "--only-comm", "make,cc1")),
     "full-adapt": ("10. Full AI + adaptive I/O limit (target stall 0.3)", "full", ("--adaptive-io", "0.3")),

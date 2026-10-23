@@ -5,7 +5,7 @@ import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from prefetch_policies import (MB, ABController, DeadFileEvictor, IOPressureController, cgroup_memory_max,
+from prefetch_policies import (MB, ABController, DeadFileEvictor, IOPressureController, TimelinessGate, cgroup_memory_max,
                                model_context_budget)
 
 
@@ -157,7 +157,7 @@ class ABTests(unittest.TestCase):
     def run_workload(self, rate_on, rate_off, seconds=120):
         """Programs open files at rate_on/s while prefetching is allowed, rate_off/s otherwise."""
         clock = FakeClock()
-        ab = ABController(period=15.0, probe=2.0, clock=clock)
+        ab = ABController(period=15.0, probe=4.0, settle=2.0, clock=clock)
         allowed = True
         while clock.t < seconds:
             clock.t += 1.0 / (rate_on if allowed else rate_off)
@@ -167,12 +167,33 @@ class ABTests(unittest.TestCase):
     def test_switches_prefetching_off_when_it_hurts(self):
         ab = self.run_workload(rate_on=15, rate_off=34)           # slow device: -56% with prefetching
         self.assertFalse(ab.on)
-        self.assertGreaterEqual(ab.summary()["tests"], 5)
+        self.assertGreaterEqual(ab.summary()["tests"], 2)          # fewer with backoff, but it switched
 
     def test_keeps_prefetching_when_it_helps(self):
         ab = self.run_workload(rate_on=180, rate_off=136)         # memory pressure: +32% with prefetching
         self.assertTrue(ab.on)
         self.assertEqual(ab.summary()["flips"], 0)
+
+
+class TimelinessTests(unittest.TestCase):
+    def test_late_prefetches_turn_it_down_and_timely_ones_back_on(self):
+        level = [0.05]
+        g = TimelinessGate(measure=lambda p: level[0])
+        for _ in range(40):
+            g.on_useful_read("/f")
+        self.assertFalse(g.on)
+        self.assertEqual(sum(g.allow() for _ in range(80)), 10)    # trickle: 1 open in 8
+        level[0] = 0.9
+        for _ in range(40):
+            g.on_useful_read("/f")
+        self.assertTrue(g.on)
+        self.assertTrue(all(g.allow() for _ in range(10)))
+
+    def test_needs_enough_samples(self):
+        g = TimelinessGate(measure=lambda p: 0.0, min_samples=20)
+        for _ in range(10):
+            g.on_useful_read("/f")
+        self.assertTrue(g.on)
 
 
 class IoprioTests(unittest.TestCase):
