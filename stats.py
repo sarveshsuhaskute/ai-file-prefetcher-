@@ -5,7 +5,7 @@ throughput (reads or ops per run), median and p99 latency, and per-actor operati
 the real-application workload. Reported: mean difference (%), its 95% confidence interval
 (Welch), and the two-sided Welch's t-test p-value.
 
-    python3 stats.py docs/raw/v6_pressure.log docs/raw/v6_noise.log ...   (default: all v3/v6/v7/v8 and vm2 logs)
+    python3 stats.py docs/raw/v6_pressure.log docs/raw/v6_noise.log ...   (default: all v3 and v6-v9 logs and vm2 logs)
 """
 import ast
 import glob
@@ -137,7 +137,7 @@ def table(rows):
 
 
 def main():
-    paths = sys.argv[1:] or sorted(p for p in glob.glob("docs/raw/v[3678]_*.log") + glob.glob("docs/raw/vm2_*.log")
+    paths = sys.argv[1:] or sorted(p for p in glob.glob("docs/raw/v[36789]_*.log") + glob.glob("docs/raw/vm2_*.log")
                                    if "crashed" not in p)    # partial runs killed by the OOM killer
     print("# Significance tests\n")
     print("Each row compares a configuration with No Daemon on per-run values. Difference = (config - no daemon) / no daemon. "
