@@ -17,3 +17,8 @@ paper/build_paper*.js
 node_modules/
 package.json
 package-lock.json
+
+# presentations and reports stay local (submitted separately)
+*.pptx
+*.docx
+report/*.docx
