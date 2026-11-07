@@ -1,10 +1,13 @@
+# Main test machine: 4 vCPU, 12 GB RAM (limactl start --name prefetch-dev ebpf.yaml).
+# Every main-VM result assumes about 11.9 GB visible to Linux: the 4 GB and 9 GB ballasts size the
+# page cache from that. Commands for each result: scripts/reproduce.sh.
 images:
   - location: "https://cloud-images.ubuntu.com/releases/24.04/release/ubuntu-24.04-server-cloudimg-arm64.img"
     arch: "aarch64"
   - location: "https://cloud-images.ubuntu.com/releases/24.04/release/ubuntu-24.04-server-cloudimg-amd64.img"
     arch: "x86_64"
 cpus: 4
-memory: "6GiB"
+memory: "12GiB"
 disk: "30GiB"
 mounts:
   - location: "~/Downloads/OS PROJECT"
@@ -16,3 +19,6 @@ provision:
       apt-get install -y clang llvm libelf-dev libbpf-dev \
         linux-tools-common linux-tools-generic linux-tools-$(uname -r) \
         bpftrace python3-bpfcc bpfcc-tools build-essential git
+      # null_blk and bfq for the slow device (scripts/slow_device.sh); bison and flex to configure
+      # PostgreSQL for the real-program workload (realapps.py)
+      apt-get install -y linux-modules-extra-$(uname -r) bison flex
