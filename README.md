@@ -40,20 +40,29 @@ This project relies heavily on eBPF and kernel tracing, which requires a Linux e
    ```bash
    brew install lima
    ```
-2. **Start the VM**:
+2. **Create and start the VM** from the provided configuration (4 vCPU, 12 GB RAM; it mounts this folder, which must be
+   `~/Downloads/OS PROJECT`, and installs BCC, the kernel tools, `linux-modules-extra`, `bison` and `flex`):
    ```bash
-   limactl start prefetch-dev
+   limactl start --name prefetch-dev ebpf.yaml
    ```
-   *(If prompted, select the default Ubuntu template, or use the provided configuration to mount this repository into the VM).*
+   The results assume this machine size: the memory-pressure runs size their ballast for about 11.9 GB of RAM.
+   The second test machine is `limactl start --name prefetch-small ebpf-small.yaml` (2 vCPU, 4 GB).
 3. **Enter the VM shell**:
    ```bash
    limactl shell prefetch-dev
    ```
-4. **Install Dependencies** (inside the VM):
-   ```bash
-   sudo apt update
-   sudo apt install -y bpfcc-tools linux-headers-$(uname -r) python3-bpfcc
-   ```
+4. **Real-program workload only** (once, inside the VM): clone and configure PostgreSQL as described at the top of `realapps.py`.
+
+## Reproducing every result
+
+`scripts/reproduce.sh` holds the exact command behind every log in `docs/raw/` (inside the VM, from the project folder):
+```bash
+sudo bash scripts/reproduce.sh list            # all runs
+sudo bash scripts/reproduce.sh v9_pressure     # one run -> docs/raw/v9_pressure.log
+python3 stats.py docs/raw/v9_pressure.log      # confidence intervals and p-values
+```
+The slow-device runs create a 150 MB/s `null_blk` disk with `scripts/slow_device.sh`; `scripts/slow_device_check.sh`
+shows how the I/O scheduler treats an idle-priority reader on it.
 
 ## Running the Evaluation Harness
 
