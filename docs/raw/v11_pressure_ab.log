@@ -1,0 +1,111 @@
+    [Ballast] holding 4.0 GB; MemAvailable now 7307 MB
+[Config] scale=3.5 noise=0.0 duration=40s iterations=5
+
+--- warm-up 1/1 (discarded)
+    [System] Settling writeback + dropping caches...
+
+--- iteration 1/5: 1. No Daemon (Default Linux Readahead)
+    [System] Settling writeback + dropping caches...
+    hit=14.82% reads=5717 lat={'mean': 9.53, 'p50': 8.67, 'p95': 17.98, 'p99': 24.62, 'psi_max': 0.0, 'pgscan': 10637312, 'pgscan_direct': 0, 'pgsteal': 10637272, 'allocstall': 0}
+
+--- iteration 1/5: 4. Full Context-Aware AI
+    [System] Settling writeback + dropping caches...
+    hit=70.33% reads=7250 lat={'mean': 5.72, 'p50': 3.82, 'p95': 14.51, 'p99': 23.12, 'psi_max': 1.24, 'pgscan': 14189312, 'pgscan_direct': 13952, 'pgsteal': 14189243, 'allocstall': 218}
+
+--- iteration 1/5: 20. Full AI + on/off self-test (prefetch only when it pays)
+    [System] Settling writeback + dropping caches...
+    hit=64.68% reads=7166 lat={'mean': 5.85, 'p50': 4.05, 'p95': 14.11, 'p99': 21.22, 'psi_max': 1.22, 'pgscan': 13975808, 'pgscan_direct': 12480, 'pgsteal': 13975737, 'allocstall': 195}
+
+--- iteration 2/5: 1. No Daemon (Default Linux Readahead)
+    [System] Settling writeback + dropping caches...
+    hit=14.09% reads=5632 lat={'mean': 9.88, 'p50': 9.36, 'p95': 17.71, 'p99': 24.01, 'psi_max': 0.94, 'pgscan': 10549248, 'pgscan_direct': 0, 'pgsteal': 10549223, 'allocstall': 0}
+
+--- iteration 2/5: 4. Full Context-Aware AI
+    [System] Settling writeback + dropping caches...
+    hit=70.18% reads=7297 lat={'mean': 5.63, 'p50': 3.83, 'p95': 14.38, 'p99': 20.35, 'psi_max': 1.28, 'pgscan': 14306240, 'pgscan_direct': 12672, 'pgsteal': 14306168, 'allocstall': 198}
+
+--- iteration 2/5: 20. Full AI + on/off self-test (prefetch only when it pays)
+    [System] Settling writeback + dropping caches...
+    hit=64.81% reads=7189 lat={'mean': 5.8, 'p50': 4.07, 'p95': 13.76, 'p99': 19.86, 'psi_max': 1.25, 'pgscan': 14030976, 'pgscan_direct': 13376, 'pgsteal': 14030909, 'allocstall': 209}
+
+--- iteration 3/5: 1. No Daemon (Default Linux Readahead)
+    [System] Settling writeback + dropping caches...
+    hit=13.20% reads=5481 lat={'mean': 10.47, 'p50': 9.69, 'p95': 19.32, 'p99': 27.68, 'psi_max': 0.95, 'pgscan': 10340352, 'pgscan_direct': 0, 'pgsteal': 10340326, 'allocstall': 0}
+
+--- iteration 3/5: 4. Full Context-Aware AI
+    [System] Settling writeback + dropping caches...
+    hit=71.00% reads=7157 lat={'mean': 5.87, 'p50': 3.93, 'p95': 15.55, 'p99': 22.22, 'psi_max': 0.98, 'pgscan': 13928960, 'pgscan_direct': 17344, 'pgsteal': 13928889, 'allocstall': 271}
+
+--- iteration 3/5: 20. Full AI + on/off self-test (prefetch only when it pays)
+    [System] Settling writeback + dropping caches...
+    hit=65.46% reads=7062 lat={'mean': 6.1, 'p50': 4.27, 'p95': 14.86, 'p99': 22.29, 'psi_max': 1.26, 'pgscan': 13700480, 'pgscan_direct': 9216, 'pgsteal': 13700411, 'allocstall': 144}
+
+--- iteration 4/5: 1. No Daemon (Default Linux Readahead)
+    [System] Settling writeback + dropping caches...
+    hit=12.81% reads=5349 lat={'mean': 11.03, 'p50': 10.22, 'p95': 20.33, 'p99': 26.22, 'psi_max': 0.81, 'pgscan': 10101056, 'pgscan_direct': 256, 'pgsteal': 10101034, 'allocstall': 4}
+
+--- iteration 4/5: 4. Full Context-Aware AI
+    [System] Settling writeback + dropping caches...
+    hit=71.18% reads=7360 lat={'mean': 5.44, 'p50': 3.79, 'p95': 13.77, 'p99': 19.95, 'psi_max': 1.28, 'pgscan': 14483324, 'pgscan_direct': 14144, 'pgsteal': 14483249, 'allocstall': 221}
+
+--- iteration 4/5: 20. Full AI + on/off self-test (prefetch only when it pays)
+    [System] Settling writeback + dropping caches...
+    hit=65.14% reads=7092 lat={'mean': 6.02, 'p50': 4.28, 'p95': 14.08, 'p99': 21.6, 'psi_max': 1.28, 'pgscan': 13781376, 'pgscan_direct': 10048, 'pgsteal': 13781305, 'allocstall': 157}
+
+--- iteration 5/5: 1. No Daemon (Default Linux Readahead)
+    [System] Settling writeback + dropping caches...
+    hit=12.31% reads=5352 lat={'mean': 11.05, 'p50': 10.07, 'p95': 20.57, 'p99': 27.74, 'psi_max': 0.97, 'pgscan': 10184448, 'pgscan_direct': 256, 'pgsteal': 10184419, 'allocstall': 4}
+
+--- iteration 5/5: 4. Full Context-Aware AI
+    [System] Settling writeback + dropping caches...
+    hit=72.39% reads=7232 lat={'mean': 5.76, 'p50': 3.82, 'p95': 14.9, 'p99': 21.88, 'psi_max': 1.25, 'pgscan': 14118592, 'pgscan_direct': 13952, 'pgsteal': 14118470, 'allocstall': 218}
+
+--- iteration 5/5: 20. Full AI + on/off self-test (prefetch only when it pays)
+    [System] Settling writeback + dropping caches...
+    hit=65.05% reads=7093 lat={'mean': 6.06, 'p50': 4.28, 'p95': 14.96, 'p99': 22.07, 'psi_max': 1.41, 'pgscan': 13784320, 'pgscan_direct': 10496, 'pgsteal': 13784249, 'allocstall': 164}
+
+============================================================
+SUMMARY
+============================================================
+
+Result: 1. No Daemon (Default Linux Readahead)
+Mean Cache Hit Rate: 13.45% +/- 1.01% (n=5) | reads/run ~5506
+   peak memory PSI some-avg10: [0.0, 0.9, 0.9, 0.8, 1.0]
+   read latency mean: 10.39 ms
+   read latency p50: 9.60 ms
+   read latency p95: 19.18 ms
+   read latency p99: 26.05 ms
+   runs: ['14.82%', '14.09%', '13.20%', '12.81%', '12.31%']  reads: [5717, 5632, 5481, 5349, 5352]
+
+Result: 4. Full Context-Aware AI
+Mean Cache Hit Rate: 71.02% +/- 0.88% (n=5) | reads/run ~7259
+   peak memory PSI some-avg10: [1.2, 1.3, 1.0, 1.3, 1.2]
+   read latency mean: 5.68 ms
+   read latency p50: 3.84 ms
+   read latency p95: 14.62 ms
+   read latency p99: 21.50 ms
+   runs: ['70.33%', '70.18%', '71.00%', '71.18%', '72.39%']  reads: [7250, 7297, 7157, 7360, 7232]
+    [Precision Stats] Useful Prefetches: 5127 / 5135 (99.8%)
+    [Precision Stats] Total DONTNEED Evictions: 0
+    [Actuator] {'issued': 5135, 'throttled_mem': 0, 'deduped': 720, 'dropped_queue': 0, 'dropped_inflight': 0}
+    [Overhead] Avg model+dispatch time per open event: 68.2 us (7288 events)
+    [Overhead] Max RSS (RAM): 170752 KB
+    [Overhead] CPU Time: User 1.83s, Sys 9.76s
+
+Result: 20. Full AI + on/off self-test (prefetch only when it pays)
+Mean Cache Hit Rate: 65.03% +/- 0.30% (n=5) | reads/run ~7120
+   peak memory PSI some-avg10: [1.2, 1.2, 1.3, 1.3, 1.4]
+   read latency mean: 5.97 ms
+   read latency p50: 4.19 ms
+   read latency p95: 14.35 ms
+   read latency p99: 21.41 ms
+   runs: ['64.68%', '64.81%', '65.46%', '65.14%', '65.05%']  reads: [7166, 7189, 7062, 7092, 7093]
+    [Precision Stats] Useful Prefetches: 4400 / 4406 (99.9%)
+    [Precision Stats] Total DONTNEED Evictions: 0
+    [Actuator] {'issued': 4406, 'throttled_mem': 0, 'deduped': 683, 'dropped_queue': 0, 'dropped_inflight': 0}
+    [Adaptive I/O] {'tests': 2, 'flips': 0, 'prefetching': 'on', 'on_time_s': 36.1}
+    [Overhead] Avg model+dispatch time per open event: 69.0 us (7117 events)
+    [Overhead] Max RSS (RAM): 170744 KB
+    [Overhead] CPU Time: User 1.78s, Sys 9.05s
+
+Evaluation Complete.

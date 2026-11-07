@@ -142,3 +142,67 @@ Memory pressure (14 GB set, 4 GB ballast), 5 runs of 40 s:
 - Note: this session's slow-disk baseline differs from v8 (no-daemon hit rate 45% vs 34%; the daemon's median gain was not
   significant here, its p99 cost was: +98%, p<0.001).
 
+
+## F. A real slow device, I/O priority, the out-of-memory fix and on/off controllers (`v10_*` to `v13_*`)
+
+**Why the cgroup cap could not answer the tail question.** `IOReadBandwidthMax` is enforced by blk-throttle, which queues bios
+first-in, first-out *above* the I/O scheduler, so no I/O priority can reorder them. Control run (BFQ on vda, 400 MB/s cap, 10 ms think):
+idle-priority prefetch vs plain daemon p99 -1.0% [-3.7, +1.7], p=0.366: no effect, as expected.
+
+**Slow device.** `null_blk`, memory-backed, driver-limited to 150 MB/s, hardware queue depth 4, BFQ (in a direct test BFQ let a
+normal reader keep the full 154 MB/s while an idle-class reader waited; mq-deadline split it 50/50). Test files on it
+(`PREFETCH_DATA_DIR`), ballast leaving ~2.2 GB of cache for 4 GB of files, 10 ms think time, 4 runs:
+
+| Configuration | Hit rate | Reads/run | p50 / p99 (ms) | Precision |
+|---|---|---|---|---|
+| No daemon | 56.8% ± 0.8 | 2048 | 6.0 / 210.1 | - |
+| Daemon | 10.1% ± 3.6 | 896 | 189.6 / 249.1 | 98.9% |
+| Daemon, idle-priority prefetch (`--prefetch-ioprio idle`) | 13.8% ± 11.7 | 1018 | 160.1 / 659.8 | 99.1% |
+| Daemon, latency-driven limit (`--adaptive-io latency`) | 6.0% ± 0.1 | 867 | 189.9 / 238.4 | 99.5% |
+
+- Daemon: throughput -56.3% [-59.3, -53.2], p<0.001 at 99% precision. Without the daemon the device already
+  moves ~147 of its 150 MB/s for demand misses; prefetched files arrive late and displace the part of the cyclic working set the
+  kernel's page replacement had kept (hit rate 57% -> 10%).
+- Idle priority: throughput +13.7% [-10.9, +38.3], p=0.183 vs daemon, p99 **+164.8% [+142.1, +187.6], p<0.001**:
+  a program reading a file still being prefetched waits behind idle-class I/O (priority inversion).
+- Latency-driven limit: 0 cuts; mean wait per request stayed ~3 ms. The loss is in hits, not queueing.
+
+**The regime is bistable.** With a cyclic working set slightly larger than the cache there are two stable states: the kernel
+(MGLRU) keeps part of the loop (57-70% hits) or none of it. Plain Linux lands in either: no-daemon hit rate 57% (v10), 21% (v11),
+65% (v12), and 14% then 77% in consecutive v13 rounds. The daemon costs -1.9% [-2.7, -1.1], p=0.004 when there is
+nothing protected to destroy (v11) and -66.3% [-86.4, -46.2], p=0.002 when there is (v12).
+
+**Deciding whether to prefetch at all.** Two controllers, both off by default:
+- `--adaptive-io ab` flips prefetching on/off for a while and keeps the mode under which the programs open files faster.
+  Under memory pressure (v11): +29.3% [+25.6, +33.0], p<0.001 vs +31.8% [+28.2, +35.5], p<0.001 for the plain daemon,
+  no switches; the probes cost -1.9% [-3.3, -0.6], p=0.012. With 2 s probes on the harmful device (v12)
+  it never switched off (damage lives in the cache, a 2 s pause cannot show it); probes were lengthened to 8 s with a settle
+  period and backoff.
+- `--timeliness-gate` measures, on each read of a prefetched file, how much of it is resident (`mincore`), and drops to 1 prefetch
+  in 8 when that average falls below 30%.
+
+v13 (harmful set-up, 90 s runs, 3 each):
+
+| Configuration | Hit rate | Reads/run | p50 / p99 (ms) | Precision |
+|---|---|---|---|---|
+| No daemon | 54.1% ± 35.0 | 3960 | 65.2 / 208.1 | - |
+| Daemon | 10.5% ± 2.9 | 1267 | 195.3 / 367.8 | 99.3% |
+| Daemon + on/off test (8 s probes) | 2.5% ± 2.1 | 1303 | 189.1 / 290.0 | 98.9% |
+| Daemon + timeliness gate | 1.6% ± 0.1 | 1328 | 188.6 / 222.3 | 98.5% |
+
+- Both controllers detected the loss: the on/off test switched prefetching off after 28 s, the gate went to its
+  trickle (measured residency 0.13, 908 opens skipped).
+- **Throughput did not recover** (+2.8% [-3.9, +9.6], p=0.281 and +4.8% [-3.3, +13.0], p=0.126 vs the plain daemon):
+  once the protected working set is lost, stopping prefetching does not bring it back within a run. The gate did cut p99
+  latency, -39.6% [-47.9, -31.3], p<0.001 vs the plain daemon.
+- The no-daemon baseline itself spanned 1,535 to 5,602 reads per run, so with 3 runs no throughput difference here is significant
+  (daemon vs no daemon -68.0% [-202.4, +66.4], p=0.161).
+- **Open problem:** on a disk already saturated by demand reads, prefetching should not start at all. Reacting after the fact is
+  too late, because the damage outlives the prefetching. A start-up test with prefetching off, or a static check of disk
+  headroom before enabling it, is the next step.
+
+**Out-of-memory fix.** The kills on real programs at 300 MB came from the model, not eviction: the daemon's own memory grew from
+90 to 173 MB per minute with or without eviction (183,000 contexts against a fixed limit of 200,000). The limit now follows the
+cgroup's memory.max (15% of it at ~700 B per context, `model_context_budget`). Dead-file eviction then ran 5 of 5 runs at 300 MB
+with no kill (`v10_oom_kills.txt`: 0), at the plain daemon's cost: throughput -1.2% [-4.3, +1.9], p=0.343.
+

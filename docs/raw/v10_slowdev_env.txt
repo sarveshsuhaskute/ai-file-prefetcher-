@@ -1,0 +1,6 @@
+device: null_blk memory-backed, mbps=150, hw_queue_depth=4
+none mq-deadline [bfq] 
+               total        used        free      shared  buff/cache   available
+Mem:           11935        7857         177           1        4126        4077
+Swap:              0           0           0
+ballast 4.1 GB

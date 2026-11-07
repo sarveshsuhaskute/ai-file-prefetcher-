@@ -400,7 +400,7 @@ if P8:
             "Dead-file eviction was also tried on the real programs, where it cannot help because their files fit in memory. At 300 MB the "
             "cgroup's out-of-memory killer stopped a 196 MB Python process (the size of the daemon) in both attempts, while the plain daemon "
             "survived the same limit. The daemon's memory grows on this workload with or without eviction (about 195 to 265 MB in 45 seconds "
-            "without a limit), so there is little headroom, but the exact reason eviction tips it over was not found. At 400 MB it ran, dropped "
+            "without a limit), so there is little headroom; Section 6.12 traces the cause to the model's size. At 400 MB it ran, dropped "
             f"{a4.get('evicted_dead', 0):.0f} files in a run, and made no significant difference compared with the plain daemon "
             f"(throughput {ci(sig('v8_apps_mem400', '11', 'throughput (per run)', 'vs_full'))}).")
 
@@ -461,6 +461,73 @@ if A9:
         f"(p99 {ci(sig('v9_slowdisk_think10', '15', 'p99 latency'))} against no daemon). On a disk that is busy most of the time, the share "
         "of time some task is stalled is near its limit with or without prefetching; extra prefetch reads make each read wait longer without "
         "raising that share much. Protecting the tail needs a per-read latency signal.")
+
+SD10, SD11, SD12 = DATA.get("v10_slowdev", {}), DATA.get("v11_slowdev", {}), DATA.get("v12_slowdev", {})
+if SD10:
+    c10, c11p, c12 = CO.get("v10_slowdev_think10", {}), CO.get("v11_pressure_ab", {}), CO.get("v12_slowdev_ab", {})
+    d.heading("6.12 A slow device, I/O priority and an on/off self-test", 2)
+    d.para("The cgroup bandwidth cap used in Section 6.4 is applied by the kernel's throttle, which queues requests in arrival order "
+           "above the I/O scheduler, so no I/O priority can reorder them. A control run confirmed it: giving prefetch reads the idle I/O "
+           f"class under the cap changed p99 latency by {ci(sig('v10_cgroupcap_idle', '18', 'p99 latency', 'vs_full'))} against the plain "
+           "daemon. For a device that queues like real slow storage, the test files were put on a `null_blk` block device limited by "
+           "its driver to 150 MB/s, with a hardware queue depth of 4 and the BFQ scheduler (a direct test showed BFQ letting a normal "
+           "reader keep the full bandwidth while an idle-class reader waited). About 2.2 GB of cache, 4 GB of files, 10 ms think time, "
+           "four runs:")
+    d.table([HDR, row("No daemon", SD10["1"]), row("Daemon", SD10["4"], pf(SD10["4"])),
+             row("Daemon, idle-priority prefetch I/O", SD10["18"], pf(SD10["18"])),
+             row("Daemon, latency-driven limit", SD10["19"], pf(SD10["19"]))], W7)
+    d.para(
+        f"The daemon lost badly: throughput {ci(sig('v10_slowdev_think10', '4', 'throughput (per run)'))}, and the hit rate fell from "
+        f"{SD10['1']['hit']:.1f}% to {SD10['4']['hit']:.1f}% even though about 99% of prefetches were used. Without the daemon the "
+        "device was already almost fully busy with the programs' own misses, so prefetching could not add bandwidth; prefetched files "
+        "arrived late and pushed out cached files the kernel would have kept. Idle priority did not fix it and tripled p99 latency "
+        f"({ci(sig('v10_slowdev_think10', '18', 'p99 latency', 'vs_full'))} against the plain daemon), because a program that needed a "
+        "file still being prefetched had to wait behind the low-priority request (priority inversion). The latency-driven limit never "
+        f"cut ({c10.get('19', {}).get('adapt_cuts', 0):.0f} cuts): the wait per request stayed near 3 ms, since the loss was in cache "
+        "hits, not in queueing.")
+    d.para(
+        f"This harm depends on the regime. In a later session with the same free memory the no-daemon hit rate was only "
+        f"{SD11['1']['hit']:.1f}% and the daemon cost just {ci(sig('v11_slowdev_ab', '4', 'throughput (per run)'))}: with a cyclic "
+        "working set slightly larger than the cache, the kernel's page replacement sometimes keeps part of it and sometimes does not, "
+        "and prefetching only does damage when there is a protected working set to destroy.")
+    t11 = c11p.get("20", {})
+    txt = ("Since no limit on prefetch I/O helped, a final policy decides whether to prefetch at all (`--adaptive-io ab`). Every 15 "
+           "seconds it flips its current mode (on or off) for 2 seconds, compares how fast the programs open files in that window with "
+           "the window before, and keeps the faster mode. Under memory pressure it ran "
+           f"{t11.get('ab_tests', 0):.0f} tests, never switched prefetching off, and kept most of the gain: throughput "
+           f"{ci(sig('v11_pressure_ab', '20', 'throughput (per run)'))} against {ci(sig('v11_pressure_ab', '4', 'throughput (per run)'))} "
+           f"for the plain daemon (the probes cost {ci(sig('v11_pressure_ab', '20', 'throughput (per run)', 'vs_full'))}).")
+    if SD12.get("20"):
+        t12 = c12.get("20", {})
+        txt += (f" Repeating the harmful slow-device set-up gave a baseline hit rate of {SD12['1']['hit']:.1f}%; the plain daemon "
+                f"changed throughput by {ci(sig('v12_slowdev_ab', '4', 'throughput (per run)'))} and the self-test by "
+                f"{ci(sig('v12_slowdev_ab', '20', 'throughput (per run)'))}, after {t12.get('ab_tests', 0):.0f} tests and "
+                f"{t12.get('ab_flips', 0):.0f} switches.")
+    SD13, c13 = DATA.get("v13_slowdev", {}), CO.get("v13_slowdev_gates", {})
+    if SD13.get("21"):
+        txt += (" With the first version's 2-second tests the self-test never switched prefetching off on the harmful device: the "
+                "damage lives in the cache, and a short pause cannot show it. A second version uses 8-second tests, and a "
+                "timeliness gate (`--timeliness-gate`) instead measures how much of each prefetched file is already in memory when "
+                "it is read, dropping to one prefetch in eight below 30%. In a final run on the harmful set-up both detected the "
+                f"loss: the self-test switched prefetching off after {c13['20'].get('ab_on_s', 0):.0f} seconds, and the gate went to its "
+                f"trickle at a measured residency of {c13['21'].get('gate_residency', 0):.2f}. Throughput still did not recover "
+                f"({ci(sig('v13_slowdev_gates', '20', 'throughput (per run)', 'vs_full'))} and "
+                f"{ci(sig('v13_slowdev_gates', '21', 'throughput (per run)', 'vs_full'))} against the plain daemon), though the gate cut "
+                f"p99 latency ({ci(sig('v13_slowdev_gates', '21', 'p99 latency', 'vs_full'))}).")
+    d.para(txt)
+    if SD13.get("21"):
+        d.para("The explanation is that this regime has two stable states. With a cyclic working set slightly larger than the "
+               "cache, the kernel either keeps part of the loop cached or none of it, and plain Linux itself lands in either (its "
+               "hit rate was 57%, 21%, 65%, and 14% then 77% in consecutive rounds). Prefetching pushes the system into the low "
+               "state, and stopping prefetching does not bring it back within a run. On a disk already saturated by the programs' "
+               "own reads, the decision not to prefetch has to be made before prefetching starts; detecting the loss afterwards is "
+               "too late. This remains open.")
+    d.para(
+        "The out-of-memory kills on the real programs (Section 6.9) were caused by the model, not by eviction: the daemon's own memory "
+        "grew from 90 to 173 MB in a minute with or without eviction as it learned 183,000 contexts, against a fixed limit of 200,000. "
+        "The limit now follows the memory cgroup (15% of its limit, at about 700 bytes per context). With that change dead-file eviction "
+        f"ran all five runs at 300 MB without a kill, at the plain daemon's cost (throughput "
+        f"{ci(sig('v10_apps_mem300_evict', '11', 'throughput (per run)', 'vs_full'))}).")
 
 # ------------------------------------------------------------------ 7 discussion
 d.heading("7. Discussion", 1)

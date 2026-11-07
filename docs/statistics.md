@@ -2,6 +2,226 @@
 
 Each row compares a configuration with No Daemon on per-run values. Difference = (config - no daemon) / no daemon. 95% CI and p-value from Welch's t-test (unequal variances). For time and latency, negative is better. Where a log also has Full AI variants (configurations 8-12, 15, 16), a second table compares them with plain Full AI; on the real-program logs, the in-kernel-filtering variants (12, 14) are compared with the library-tracing daemon (13).
 
+## v10_apps_mem300_evict.log
+
+| Configuration | Metric | n (base, config) | Difference | 95% CI | p |
+| --- | --- | --- | --- | --- | --- |
+| Full Context-Aware AI | throughput (per run) | 5, 5 | -32.8% | [-34.3%, -31.2%] | <0.001 |
+| Full Context-Aware AI | median latency | 5, 5 | +33.2% | [+31.2%, +35.2%] | <0.001 |
+| Full Context-Aware AI | p99 latency | 5, 5 | +132.6% | [+124.4%, +140.8%] | <0.001 |
+| Full Context-Aware AI | compile time per op | 5, 5 | +17.2% | [+15.8%, +18.5%] | <0.001 |
+| Full Context-Aware AI | python time per op | 5, 5 | +30.6% | [+28.5%, +32.6%] | <0.001 |
+| Full Context-Aware AI | search time per op | 5, 5 | +75.8% | [+74.2%, +77.3%] | <0.001 |
+| Full AI + dead-file eviction | throughput (per run) | 5, 5 | -33.6% | [-35.8%, -31.4%] | <0.001 |
+| Full AI + dead-file eviction | median latency | 5, 5 | +34.2% | [+31.4%, +37.1%] | <0.001 |
+| Full AI + dead-file eviction | p99 latency | 5, 5 | +144.1% | [+135.1%, +153.2%] | <0.001 |
+| Full AI + dead-file eviction | compile time per op | 5, 5 | +20.9% | [+19.6%, +22.2%] | <0.001 |
+| Full AI + dead-file eviction | python time per op | 5, 5 | +35.3% | [+33.1%, +37.5%] | <0.001 |
+| Full AI + dead-file eviction | search time per op | 5, 5 | +72.2% | [+62.4%, +82.1%] | <0.001 |
+
+Against Full AI:
+
+| Configuration | Metric | n (base, config) | Difference | 95% CI | p |
+| --- | --- | --- | --- | --- | --- |
+| Full AI + dead-file eviction | throughput (per run) | 5, 5 | -1.2% | [-4.3%, +1.9%] | 0.343 |
+| Full AI + dead-file eviction | median latency | 5, 5 | +0.8% | [-1.4%, +3.0%] | 0.436 |
+| Full AI + dead-file eviction | p99 latency | 5, 5 | +4.9% | [+1.9%, +8.0%] | 0.011 |
+| Full AI + dead-file eviction | compile time per op | 5, 5 | +3.2% | [+2.6%, +3.8%] | <0.001 |
+| Full AI + dead-file eviction | python time per op | 5, 5 | +3.6% | [+2.1%, +5.2%] | <0.001 |
+| Full AI + dead-file eviction | search time per op | 5, 5 | -2.0% | [-7.6%, +3.6%] | 0.381 |
+
+## v10_cgroupcap_idle.log
+
+| Configuration | Metric | n (base, config) | Difference | 95% CI | p |
+| --- | --- | --- | --- | --- | --- |
+| Full Context-Aware AI | throughput (per run) | 4, 4 | +6.9% | [+0.8%, +13.1%] | 0.037 |
+| Full Context-Aware AI | median latency | 4, 4 | -8.7% | [-11.8%, -5.7%] | 0.002 |
+| Full Context-Aware AI | p99 latency | 4, 4 | +191.1% | [+187.6%, +194.6%] | <0.001 |
+| Full Context-Aware AI | pages scanned by reclaim | 4, 4 | +1.0% | [+0.8%, +1.2%] | <0.001 |
+| Full Context-Aware AI | pages scanned by direct reclaim | 4, 4 | +290.8% | [+197.4%, +384.3%] | <0.001 |
+| Full Context-Aware AI | direct-reclaim stalls | 4, 4 | +290.8% | [+197.4%, +384.3%] | <0.001 |
+| Full AI, prefetch I/O at idle priority | throughput (per run) | 4, 4 | +3.4% | [-3.0%, +9.9%] | 0.190 |
+| Full AI, prefetch I/O at idle priority | median latency | 4, 4 | -5.7% | [-8.2%, -3.1%] | 0.005 |
+| Full AI, prefetch I/O at idle priority | p99 latency | 4, 4 | +188.2% | [+180.1%, +196.4%] | <0.001 |
+| Full AI, prefetch I/O at idle priority | pages scanned by reclaim | 4, 4 | +1.1% | [+0.8%, +1.3%] | <0.001 |
+| Full AI, prefetch I/O at idle priority | pages scanned by direct reclaim | 4, 4 | +270.0% | [+190.2%, +349.8%] | <0.001 |
+| Full AI, prefetch I/O at idle priority | direct-reclaim stalls | 4, 4 | +270.0% | [+190.2%, +349.8%] | <0.001 |
+
+Against Full AI:
+
+| Configuration | Metric | n (base, config) | Difference | 95% CI | p |
+| --- | --- | --- | --- | --- | --- |
+| Full AI, prefetch I/O at idle priority | throughput (per run) | 4, 4 | -3.3% | [-9.7%, +3.2%] | 0.259 |
+| Full AI, prefetch I/O at idle priority | median latency | 4, 4 | +3.4% | [-0.1%, +6.8%] | 0.057 |
+| Full AI, prefetch I/O at idle priority | p99 latency | 4, 4 | -1.0% | [-3.7%, +1.7%] | 0.366 |
+| Full AI, prefetch I/O at idle priority | pages scanned by reclaim | 4, 4 | +0.0% | [-0.2%, +0.3%] | 0.821 |
+| Full AI, prefetch I/O at idle priority | pages scanned by direct reclaim | 4, 4 | -5.3% | [-31.2%, +20.5%] | 0.630 |
+| Full AI, prefetch I/O at idle priority | direct-reclaim stalls | 4, 4 | -5.3% | [-31.2%, +20.5%] | 0.630 |
+
+## v10_slowdev_think10.log
+
+| Configuration | Metric | n (base, config) | Difference | 95% CI | p |
+| --- | --- | --- | --- | --- | --- |
+| Full Context-Aware AI | throughput (per run) | 4, 4 | -56.3% | [-59.3%, -53.2%] | <0.001 |
+| Full Context-Aware AI | median latency | 4, 4 | +3057.3% | [+3027.1%, +3087.5%] | <0.001 |
+| Full Context-Aware AI | p99 latency | 4, 4 | +18.6% | [+6.3%, +30.8%] | 0.017 |
+| Full Context-Aware AI | pages scanned by reclaim | 4, 4 | -0.1% | [-1.1%, +0.9%] | 0.780 |
+| Full Context-Aware AI | pages scanned by direct reclaim | 4, 4 | +125.0% | [-159.5%, +409.5%] | 0.283 |
+| Full Context-Aware AI | direct-reclaim stalls | 4, 4 | +125.0% | [-159.5%, +409.5%] | 0.283 |
+| Full AI, prefetch I/O at idle priority | throughput (per run) | 4, 4 | -50.3% | [-61.0%, -39.6%] | <0.001 |
+| Full AI, prefetch I/O at idle priority | median latency | 4, 4 | +2565.9% | [+1919.0%, +3212.8%] | 0.001 |
+| Full AI, prefetch I/O at idle priority | p99 latency | 4, 4 | +214.0% | [+185.4%, +242.6%] | <0.001 |
+| Full AI, prefetch I/O at idle priority | pages scanned by reclaim | 4, 4 | +2.8% | [+2.4%, +3.1%] | <0.001 |
+| Full AI, prefetch I/O at idle priority | pages scanned by direct reclaim | 4, 4 | -41.7% | [-168.2%, +84.8%] | 0.450 |
+| Full AI, prefetch I/O at idle priority | direct-reclaim stalls | 4, 4 | -41.7% | [-168.2%, +84.8%] | 0.450 |
+| Full AI + adaptive I/O limit, latency signal | throughput (per run) | 4, 4 | -57.6% | [-60.6%, -54.7%] | <0.001 |
+| Full AI + adaptive I/O limit, latency signal | median latency | 4, 4 | +3062.1% | [+3031.0%, +3093.2%] | <0.001 |
+| Full AI + adaptive I/O limit, latency signal | p99 latency | 4, 4 | +13.5% | [+6.1%, +20.8%] | 0.010 |
+| Full AI + adaptive I/O limit, latency signal | pages scanned by reclaim | 4, 4 | -0.1% | [-0.8%, +0.7%] | 0.850 |
+| Full AI + adaptive I/O limit, latency signal | pages scanned by direct reclaim | 4, 4 | -51.4% | [-177.2%, +74.4%] | 0.355 |
+| Full AI + adaptive I/O limit, latency signal | direct-reclaim stalls | 4, 4 | -51.4% | [-177.2%, +74.4%] | 0.355 |
+
+Against Full AI:
+
+| Configuration | Metric | n (base, config) | Difference | 95% CI | p |
+| --- | --- | --- | --- | --- | --- |
+| Full AI, prefetch I/O at idle priority | throughput (per run) | 4, 4 | +13.7% | [-10.9%, +38.3%] | 0.183 |
+| Full AI, prefetch I/O at idle priority | median latency | 4, 4 | -15.6% | [-36.1%, +5.0%] | 0.095 |
+| Full AI, prefetch I/O at idle priority | p99 latency | 4, 4 | +164.8% | [+142.1%, +187.6%] | <0.001 |
+| Full AI, prefetch I/O at idle priority | pages scanned by reclaim | 4, 4 | +2.9% | [+1.8%, +3.9%] | 0.002 |
+| Full AI, prefetch I/O at idle priority | pages scanned by direct reclaim | 4, 4 | -74.1% | [-199.8%, +51.6%] | 0.177 |
+| Full AI, prefetch I/O at idle priority | direct-reclaim stalls | 4, 4 | -74.1% | [-199.8%, +51.6%] | 0.177 |
+| Full AI + adaptive I/O limit, latency signal | throughput (per run) | 4, 4 | -3.2% | [-9.0%, +2.7%] | 0.186 |
+| Full AI + adaptive I/O limit, latency signal | median latency | 4, 4 | +0.2% | [-0.2%, +0.5%] | 0.281 |
+| Full AI + adaptive I/O limit, latency signal | p99 latency | 4, 4 | -4.3% | [-14.1%, +5.5%] | 0.310 |
+| Full AI + adaptive I/O limit, latency signal | pages scanned by reclaim | 4, 4 | +0.1% | [-1.0%, +1.1%] | 0.906 |
+| Full AI + adaptive I/O limit, latency signal | pages scanned by direct reclaim | 4, 4 | -78.4% | [-204.1%, +47.3%] | 0.158 |
+| Full AI + adaptive I/O limit, latency signal | direct-reclaim stalls | 4, 4 | -78.4% | [-204.1%, +47.3%] | 0.158 |
+
+## v11_pressure_ab.log
+
+| Configuration | Metric | n (base, config) | Difference | 95% CI | p |
+| --- | --- | --- | --- | --- | --- |
+| Full Context-Aware AI | throughput (per run) | 5, 5 | +31.8% | [+28.2%, +35.5%] | <0.001 |
+| Full Context-Aware AI | median latency | 5, 5 | -60.0% | [-68.0%, -52.0%] | <0.001 |
+| Full Context-Aware AI | p99 latency | 5, 5 | -17.5% | [-26.1%, -8.8%] | 0.002 |
+| Full Context-Aware AI | pages scanned by reclaim | 5, 5 | +37.1% | [+34.0%, +40.2%] | <0.001 |
+| Full Context-Aware AI | pages scanned by direct reclaim | 5, 5 | +13975.0% | [+11868.2%, +16081.8%] | <0.001 |
+| Full Context-Aware AI | direct-reclaim stalls | 5, 5 | +13975.0% | [+11868.2%, +16081.8%] | <0.001 |
+| Full AI + on/off self-test (prefetch only when it pays) | throughput (per run) | 5, 5 | +29.3% | [+25.6%, +33.0%] | <0.001 |
+| Full AI + on/off self-test (prefetch only when it pays) | median latency | 5, 5 | -56.4% | [-64.3%, -48.4%] | <0.001 |
+| Full AI + on/off self-test (prefetch only when it pays) | p99 latency | 5, 5 | -17.8% | [-26.0%, -9.7%] | 0.002 |
+| Full AI + on/off self-test (prefetch only when it pays) | pages scanned by reclaim | 5, 5 | +33.7% | [+30.9%, +36.5%] | <0.001 |
+| Full AI + on/off self-test (prefetch only when it pays) | pages scanned by direct reclaim | 5, 5 | +10762.5% | [+8657.1%, +12867.9%] | <0.001 |
+| Full AI + on/off self-test (prefetch only when it pays) | direct-reclaim stalls | 5, 5 | +10762.5% | [+8657.1%, +12867.9%] | <0.001 |
+
+Against Full AI:
+
+| Configuration | Metric | n (base, config) | Difference | 95% CI | p |
+| --- | --- | --- | --- | --- | --- |
+| Full AI + on/off self-test (prefetch only when it pays) | throughput (per run) | 5, 5 | -1.9% | [-3.3%, -0.6%] | 0.012 |
+| Full AI + on/off self-test (prefetch only when it pays) | median latency | 5, 5 | +9.2% | [+5.4%, +13.0%] | 0.001 |
+| Full AI + on/off self-test (prefetch only when it pays) | p99 latency | 5, 5 | -0.4% | [-8.4%, +7.5%] | 0.899 |
+| Full AI + on/off self-test (prefetch only when it pays) | pages scanned by reclaim | 5, 5 | -2.5% | [-4.3%, -0.6%] | 0.016 |
+| Full AI + on/off self-test (prefetch only when it pays) | pages scanned by direct reclaim | 5, 5 | -22.8% | [-40.4%, -5.2%] | 0.017 |
+| Full AI + on/off self-test (prefetch only when it pays) | direct-reclaim stalls | 5, 5 | -22.8% | [-40.4%, -5.2%] | 0.017 |
+
+## v11_slowdev_ab.log
+
+| Configuration | Metric | n (base, config) | Difference | 95% CI | p |
+| --- | --- | --- | --- | --- | --- |
+| Full Context-Aware AI | throughput (per run) | 4, 4 | -1.9% | [-2.7%, -1.1%] | 0.004 |
+| Full Context-Aware AI | median latency | 4, 4 | +0.4% | [+0.2%, +0.7%] | 0.007 |
+| Full Context-Aware AI | p99 latency | 4, 4 | +9.0% | [-3.1%, +21.1%] | 0.108 |
+| Full Context-Aware AI | pages scanned by reclaim | 4, 4 | -0.1% | [-1.6%, +1.4%] | 0.911 |
+| Full Context-Aware AI | pages scanned by direct reclaim | 4, 4 | -30.0% | [-210.2%, +150.2%] | 0.683 |
+| Full Context-Aware AI | direct-reclaim stalls | 4, 4 | -30.0% | [-210.2%, +150.2%] | 0.683 |
+| Full AI + on/off self-test (prefetch only when it pays) | throughput (per run) | 4, 4 | -1.5% | [-3.0%, +0.0%] | 0.052 |
+| Full AI + on/off self-test (prefetch only when it pays) | median latency | 4, 4 | +0.3% | [-0.0%, +0.6%] | 0.061 |
+| Full AI + on/off self-test (prefetch only when it pays) | p99 latency | 4, 4 | +8.8% | [+0.3%, +17.2%] | 0.044 |
+| Full AI + on/off self-test (prefetch only when it pays) | pages scanned by reclaim | 4, 4 | +0.6% | [-1.6%, +2.7%] | 0.462 |
+| Full AI + on/off self-test (prefetch only when it pays) | pages scanned by direct reclaim | 4, 4 | +120.0% | [-107.4%, +347.4%] | 0.243 |
+| Full AI + on/off self-test (prefetch only when it pays) | direct-reclaim stalls | 4, 4 | +120.0% | [-107.4%, +347.4%] | 0.243 |
+
+Against Full AI:
+
+| Configuration | Metric | n (base, config) | Difference | 95% CI | p |
+| --- | --- | --- | --- | --- | --- |
+| Full AI + on/off self-test (prefetch only when it pays) | throughput (per run) | 4, 4 | +0.4% | [-1.1%, +1.9%] | 0.502 |
+| Full AI + on/off self-test (prefetch only when it pays) | median latency | 4, 4 | -0.1% | [-0.5%, +0.2%] | 0.310 |
+| Full AI + on/off self-test (prefetch only when it pays) | p99 latency | 4, 4 | -0.2% | [-11.5%, +11.1%] | 0.967 |
+| Full AI + on/off self-test (prefetch only when it pays) | pages scanned by reclaim | 4, 4 | +0.7% | [-1.5%, +2.8%] | 0.476 |
+| Full AI + on/off self-test (prefetch only when it pays) | pages scanned by direct reclaim | 4, 4 | +214.3% | [-86.1%, +514.6%] | 0.122 |
+| Full AI + on/off self-test (prefetch only when it pays) | direct-reclaim stalls | 4, 4 | +214.3% | [-86.1%, +514.6%] | 0.122 |
+
+## v12_slowdev_ab.log
+
+| Configuration | Metric | n (base, config) | Difference | 95% CI | p |
+| --- | --- | --- | --- | --- | --- |
+| Full Context-Aware AI | throughput (per run) | 4, 4 | -66.3% | [-86.4%, -46.2%] | 0.002 |
+| Full Context-Aware AI | median latency | 4, 4 | +4185.5% | [+4150.6%, +4220.4%] | <0.001 |
+| Full Context-Aware AI | p99 latency | 4, 4 | +56.3% | [+25.0%, +87.6%] | 0.011 |
+| Full Context-Aware AI | pages scanned by reclaim | 4, 4 | -2.3% | [-3.2%, -1.4%] | 0.002 |
+| Full Context-Aware AI | pages scanned by direct reclaim | 4, 4 | +1160.0% | [-1077.7%, +3397.7%] | 0.201 |
+| Full Context-Aware AI | direct-reclaim stalls | 4, 4 | +1160.0% | [-1077.7%, +3397.7%] | 0.201 |
+| Full AI + on/off self-test (prefetch only when it pays) | throughput (per run) | 4, 4 | -66.3% | [-86.5%, -46.1%] | 0.002 |
+| Full AI + on/off self-test (prefetch only when it pays) | median latency | 4, 4 | +4150.3% | [+4128.3%, +4172.3%] | <0.001 |
+| Full AI + on/off self-test (prefetch only when it pays) | p99 latency | 4, 4 | +37.0% | [-10.7%, +84.7%] | 0.090 |
+| Full AI + on/off self-test (prefetch only when it pays) | pages scanned by reclaim | 4, 4 | +0.4% | [-1.8%, +2.7%] | 0.618 |
+| Full AI + on/off self-test (prefetch only when it pays) | pages scanned by direct reclaim | 4, 4 | +2900.0% | [-1295.0%, +7095.0%] | 0.116 |
+| Full AI + on/off self-test (prefetch only when it pays) | direct-reclaim stalls | 4, 4 | +2900.0% | [-1295.0%, +7095.0%] | 0.116 |
+
+Against Full AI:
+
+| Configuration | Metric | n (base, config) | Difference | 95% CI | p |
+| --- | --- | --- | --- | --- | --- |
+| Full AI + on/off self-test (prefetch only when it pays) | throughput (per run) | 4, 4 | +0.1% | [-6.1%, +6.2%] | 0.980 |
+| Full AI + on/off self-test (prefetch only when it pays) | median latency | 4, 4 | -0.8% | [-1.6%, -0.0%] | 0.049 |
+| Full AI + on/off self-test (prefetch only when it pays) | p99 latency | 4, 4 | -12.3% | [-41.5%, +16.8%] | 0.330 |
+| Full AI + on/off self-test (prefetch only when it pays) | pages scanned by reclaim | 4, 4 | +2.8% | [+0.4%, +5.2%] | 0.034 |
+| Full AI + on/off self-test (prefetch only when it pays) | pages scanned by direct reclaim | 4, 4 | +138.1% | [-176.5%, +452.7%] | 0.303 |
+| Full AI + on/off self-test (prefetch only when it pays) | direct-reclaim stalls | 4, 4 | +138.1% | [-176.5%, +452.7%] | 0.303 |
+
+## v13_slowdev_gates.log
+
+| Configuration | Metric | n (base, config) | Difference | 95% CI | p |
+| --- | --- | --- | --- | --- | --- |
+| Full Context-Aware AI | throughput (per run) | 3, 3 | -68.0% | [-202.4%, +66.4%] | 0.161 |
+| Full Context-Aware AI | median latency | 3, 3 | +199.6% | [-201.7%, +601.0%] | 0.167 |
+| Full Context-Aware AI | p99 latency | 3, 3 | +76.8% | [+60.5%, +93.0%] | 0.002 |
+| Full Context-Aware AI | pages scanned by reclaim | 3, 3 | -5.6% | [-7.4%, -3.8%] | 0.003 |
+| Full Context-Aware AI | pages scanned by direct reclaim | 3, 3 | +103.0% | [-169.5%, +375.5%] | 0.328 |
+| Full Context-Aware AI | direct-reclaim stalls | 3, 3 | +103.0% | [-169.5%, +375.5%] | 0.328 |
+| Full AI + on/off self-test (prefetch only when it pays) | throughput (per run) | 3, 3 | -67.1% | [-201.6%, +67.3%] | 0.165 |
+| Full AI + on/off self-test (prefetch only when it pays) | median latency | 3, 3 | +190.0% | [-213.4%, +593.4%] | 0.180 |
+| Full AI + on/off self-test (prefetch only when it pays) | p99 latency | 3, 3 | +39.4% | [-30.5%, +109.3%] | 0.137 |
+| Full AI + on/off self-test (prefetch only when it pays) | pages scanned by reclaim | 3, 3 | -0.4% | [-5.4%, +4.5%] | 0.751 |
+| Full AI + on/off self-test (prefetch only when it pays) | pages scanned by direct reclaim | 3, 3 | +42.9% | [-231.0%, +316.7%] | 0.676 |
+| Full AI + on/off self-test (prefetch only when it pays) | direct-reclaim stalls | 3, 3 | +42.9% | [-231.0%, +316.7%] | 0.676 |
+| Full AI + timeliness gate (prefetch while prefetches arrive in time) | throughput (per run) | 3, 3 | -66.5% | [-200.9%, +68.0%] | 0.167 |
+| Full AI + timeliness gate (prefetch while prefetches arrive in time) | median latency | 3, 3 | +189.4% | [-214.0%, +592.8%] | 0.181 |
+| Full AI + timeliness gate (prefetch while prefetches arrive in time) | p99 latency | 3, 3 | +6.8% | [+0.8%, +12.9%] | 0.038 |
+| Full AI + timeliness gate (prefetch while prefetches arrive in time) | pages scanned by reclaim | 3, 3 | +1.9% | [+1.2%, +2.6%] | 0.005 |
+| Full AI + timeliness gate (prefetch while prefetches arrive in time) | pages scanned by direct reclaim | 3, 3 | +185.7% | [-91.2%, +462.7%] | 0.122 |
+| Full AI + timeliness gate (prefetch while prefetches arrive in time) | direct-reclaim stalls | 3, 3 | +185.7% | [-91.2%, +462.7%] | 0.122 |
+
+Against Full AI:
+
+| Configuration | Metric | n (base, config) | Difference | 95% CI | p |
+| --- | --- | --- | --- | --- | --- |
+| Full AI + on/off self-test (prefetch only when it pays) | throughput (per run) | 3, 3 | +2.8% | [-3.9%, +9.6%] | 0.281 |
+| Full AI + on/off self-test (prefetch only when it pays) | median latency | 3, 3 | -3.2% | [-11.3%, +4.9%] | 0.233 |
+| Full AI + on/off self-test (prefetch only when it pays) | p99 latency | 3, 3 | -21.1% | [-58.1%, +15.8%] | 0.142 |
+| Full AI + on/off self-test (prefetch only when it pays) | pages scanned by reclaim | 3, 3 | +5.5% | [+0.8%, +10.2%] | 0.035 |
+| Full AI + on/off self-test (prefetch only when it pays) | pages scanned by direct reclaim | 3, 3 | -29.6% | [-129.1%, +69.9%] | 0.451 |
+| Full AI + on/off self-test (prefetch only when it pays) | direct-reclaim stalls | 3, 3 | -29.6% | [-129.1%, +69.9%] | 0.451 |
+| Full AI + timeliness gate (prefetch while prefetches arrive in time) | throughput (per run) | 3, 3 | +4.8% | [-3.3%, +13.0%] | 0.126 |
+| Full AI + timeliness gate (prefetch while prefetches arrive in time) | median latency | 3, 3 | -3.4% | [-11.6%, +4.8%] | 0.214 |
+| Full AI + timeliness gate (prefetch while prefetches arrive in time) | p99 latency | 3, 3 | -39.6% | [-47.9%, -31.3%] | <0.001 |
+| Full AI + timeliness gate (prefetch while prefetches arrive in time) | pages scanned by reclaim | 3, 3 | +8.0% | [+5.9%, +10.1%] | 0.003 |
+| Full AI + timeliness gate (prefetch while prefetches arrive in time) | pages scanned by direct reclaim | 3, 3 | +40.8% | [-42.6%, +124.2%] | 0.243 |
+| Full AI + timeliness gate (prefetch while prefetches arrive in time) | direct-reclaim stalls | 3, 3 | +40.8% | [-42.6%, +124.2%] | 0.243 |
+
 ## v3_slowdisk400MBs_think10ms_ballast9GB_chunked_willneed.log
 
 | Configuration | Metric | n (base, config) | Difference | 95% CI | p |

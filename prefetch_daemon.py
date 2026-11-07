@@ -8,7 +8,8 @@ import sys
 import time
 
 from prefetch_actuator import Actuator, MemoryMonitor, PrecisionTracker
-from prefetch_policies import DeadFileEvictor, IOPressureController
+from prefetch_policies import (ABController, DeadFileEvictor, IOPressureController, TimelinessGate,
+                               cgroup_memory_max, model_context_budget)
 from prefetch_model import PrefetchModel
 
 bpf_source = r"""
@@ -193,9 +194,19 @@ def main():
                         help="fallback (no PSI): throttle when MemAvailable < this fraction of MemTotal")
     parser.add_argument("--adaptive-io", default="0",
                         help="adapt prefetch bytes in flight to I/O pressure: a target stall fraction such as 0.3, "
-                             "or 'auto' to set the target from the stall measured with prefetching paused (0 = off)")
+                             "'auto' (target from the stall measured with prefetching paused), or 'latency' (target 1.5x "
+                             "the device's mean read wait measured with prefetching paused), or 'ab' (switch prefetching "
+                             "off when a periodic on/off test shows the programs open files faster without it) (0 = off)")
     parser.add_argument("--evict-dead", action="store_true",
                         help="drop a file after use when its reuse distance exceeds the page cache")
+    parser.add_argument("--timeliness-gate", action="store_true",
+                        help="drop to a trickle of prefetches while prefetched files are mostly not resident when read")
+    parser.add_argument("--prefetch-ioprio", choices=["idle", "be"], default=None,
+                        help="I/O priority class of the prefetch worker threads (idle: served after the programs' reads)")
+    parser.add_argument("--io-dev", default=os.environ.get("PREFETCH_IO_DEV", "vda"),
+                        help="block device whose read latency --adaptive-io latency watches")
+    parser.add_argument("--max-contexts", type=int, default=0,
+                        help="model size bound in contexts (0 = auto: 200k, or 15%% of the cgroup's memory.max at ~700 B each)")
     parser.add_argument("--kernel-filter", action="store_true",
                         help="report only the first read() of each open file, and close() only when --evict-dead needs it")
     parser.add_argument("--only-comm", default="",
@@ -211,16 +222,25 @@ def main():
     from bcc import BPF  # imported late so the model/actuator stay testable without bcc
 
     os.makedirs(os.path.dirname(args.model_path), exist_ok=True)
-    model = PrefetchModel(mode=args.mode)
+    limit = cgroup_memory_max()
+    max_contexts = args.max_contexts or model_context_budget(limit)
+    model = PrefetchModel(mode=args.mode, max_contexts=max_contexts)
+    print(f"[Model] max contexts {max_contexts}" + (f" (cgroup memory.max {limit >> 20} MB)" if limit else ""), flush=True)
     tracker = PrecisionTracker()
     mem = MemoryMonitor(psi_threshold=1e9 if args.no_mem_aware else args.psi_threshold,
                         reclaim_mb_s=0.0 if args.no_mem_aware else args.reclaim_mb_s,
                         low_frac=0.0 if args.no_mem_aware else args.low_mem_frac)
     actuator = Actuator(tracker, memory=mem, hi=args.threshold, top_k=args.top_k,
                         max_inflight_mb=args.max_inflight_mb,
-                        min_precision=args.min_precision, gate_hi=args.gate_threshold)
-    if args.adaptive_io == "auto":
+                        min_precision=args.min_precision, gate_hi=args.gate_threshold, io_class=args.prefetch_ioprio)
+    abctl = ABController() if args.adaptive_io == "ab" else None
+    tgate = TimelinessGate() if args.timeliness_gate else None
+    if args.adaptive_io == "ab":
+        ioctl = None
+    elif args.adaptive_io == "auto":
         ioctl = IOPressureController(auto_margin=0.1)
+    elif args.adaptive_io == "latency":
+        ioctl = IOPressureController(auto_margin=0.5, signal="latency", device=args.io_dev)
     else:
         ioctl = IOPressureController(target=float(args.adaptive_io)) if float(args.adaptive_io) > 0 else None
     evictor = DeadFileEvictor() if args.evict_dead else None
@@ -262,7 +282,7 @@ def main():
             if ioctl is not None:
                 actuator.max_inflight = ioctl.limit()
             decisions = []
-            if args.mode != "train":
+            if args.mode != "train" and (abctl is None or abctl.allow()) and (tgate is None or tgate.allow()):
                 decisions = actuator.submit(model.predict_next(ev.pid, comm, bucket, top_k=args.top_k * 2,
                                                                 min_conf=args.threshold))
             if args.trace:
@@ -281,6 +301,8 @@ def main():
                           f"{os.path.basename(filename):<20} | DONTNEED: reuse distance exceeds cache", flush=True)
         elif ev.type == EV_READ:
             age = tracker.record_read(filename)
+            if tgate is not None and age is not None:
+                tgate.on_useful_read(filename)
             if args.trace and age is not None:
                 ts = datetime.datetime.now().strftime("%H:%M:%S.%f")[:-3]
                 print(f"{ts} read pid={ev.pid:<6} {ev.comm.decode('utf-8', 'replace'):<10} "
@@ -316,6 +338,10 @@ def main():
     print(f"[Actuator] {actuator.stats}")
     if ioctl is not None:
         print(f"[Adaptive I/O] {ioctl.summary()}")
+    if abctl is not None:
+        print(f"[Adaptive I/O] {abctl.summary()}")
+    if tgate is not None:
+        print(f"[Timeliness gate] {tgate.summary()}")
     if evictor is not None:
         print(f"[Dead-file eviction] evicted {evictor.evicted} files after use")
     ev_n = max(counters["events"], 1)

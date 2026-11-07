@@ -5,7 +5,7 @@ throughput (reads or ops per run), median and p99 latency, and per-actor operati
 the real-application workload. Reported: mean difference (%), its 95% confidence interval
 (Welch), and the two-sided Welch's t-test p-value.
 
-    python3 stats.py docs/raw/v6_pressure.log docs/raw/v6_noise.log ...   (default: all v3 and v6-v9 logs and vm2 logs)
+    python3 stats.py docs/raw/v6_pressure.log docs/raw/v6_noise.log ...   (default: every v<N>_ and vm2_ log)
 """
 import ast
 import glob
@@ -137,7 +137,7 @@ def table(rows):
 
 
 def main():
-    paths = sys.argv[1:] or sorted(p for p in glob.glob("docs/raw/v[36789]_*.log") + glob.glob("docs/raw/vm2_*.log")
+    paths = sys.argv[1:] or sorted(p for p in glob.glob("docs/raw/v[0-9]*_*.log") + glob.glob("docs/raw/vm2_*.log")
                                    if "crashed" not in p)    # partial runs killed by the OOM killer
     print("# Significance tests\n")
     print("Each row compares a configuration with No Daemon on per-run values. Difference = (config - no daemon) / no daemon. "
@@ -150,7 +150,7 @@ def main():
             continue
         print(f"## {p.split('/')[-1]}\n")
         table(rows)
-        variants = report(p, base_prefix="4.", only={"8", "9", "10", "11", "12", "15", "16"})
+        variants = report(p, base_prefix="4.", only={"8", "9", "10", "11", "12", "15", "16", "18", "19", "20", "21"})
         if variants:
             print("Against Full AI:\n")
             table(variants)

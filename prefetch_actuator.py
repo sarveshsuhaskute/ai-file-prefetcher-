@@ -6,7 +6,9 @@ Fixes the two failure modes diagnosed in docs/final_evaluation_report.md:
   * per-event overhead -> top-k fan-out, de-duplication cooldown, and
     fadvise calls moved off the event-consumer thread.
 """
+import ctypes
 import os
+import platform
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -154,6 +156,25 @@ class MemoryMonitor:
             return False                 # unknown -> don't block prefetching
 
 
+# ioprio_set(2) has no Python wrapper. Readahead started by posix_fadvise is submitted in the calling
+# thread's context and inherits its I/O priority, so marking the worker threads IDLE lets a priority-aware
+# scheduler (mq-deadline, BFQ) serve the programs' own reads first.
+_NR_IOPRIO_SET = {"aarch64": 30, "arm64": 30, "x86_64": 251}.get(platform.machine())
+IOPRIO_CLASSES = {"rt": 1, "be": 2, "idle": 3}
+
+
+def set_thread_ioprio(cls, level=7):
+    """Set the calling thread's I/O priority class; returns True on success."""
+    if _NR_IOPRIO_SET is None or cls not in IOPRIO_CLASSES:
+        return False
+    try:
+        libc = ctypes.CDLL(None, use_errno=True)
+        value = (IOPRIO_CLASSES[cls] << 13) | (0 if cls == "idle" else level)
+        return libc.syscall(_NR_IOPRIO_SET, 1, threading.get_native_id(), value) == 0   # 1 = IOPRIO_WHO_PROCESS (a tid)
+    except (OSError, AttributeError):
+        return False
+
+
 WILLNEED_CHUNK = 1 << 20         # see _fadvise
 MAX_PREFETCH_BYTES = 64 << 20    # don't pull in more than this per file
 
@@ -179,7 +200,7 @@ class Actuator:
     def __init__(self, tracker, memory=None, hi=0.5, top_k=2, cooldown=5.0,
                  workers=2, max_queue=256, advise=_fadvise,
                  max_inflight_mb=0, sizeof=None,
-                 min_precision=0.0, gate_hi=0.9, sweep_every=0.5):
+                 min_precision=0.0, gate_hi=0.9, sweep_every=0.5, io_class=None):
         self.tracker = tracker
         self.memory = memory or MemoryMonitor()
         self.hi = hi
@@ -198,8 +219,14 @@ class Actuator:
         self.sweep_every = sweep_every
         self._next_sweep = 0.0
         self._lock = threading.Lock()
-        self._pool = ThreadPoolExecutor(max_workers=workers, thread_name_prefix="fadvise")
         self.stats = {"issued": 0, "throttled_mem": 0, "deduped": 0, "dropped_queue": 0, "dropped_inflight": 0}
+        self.io_class = io_class
+        self._pool = ThreadPoolExecutor(max_workers=workers, thread_name_prefix="fadvise",
+                                        initializer=self._init_worker if io_class else None)
+
+    def _init_worker(self):
+        if not set_thread_ioprio(self.io_class):
+            self.stats["ioprio_failed"] = self.stats.get("ioprio_failed", 0) + 1
 
     def submit(self, predictions):
         """predictions: [(file, confidence)] sorted descending. Returns [(file, conf, outcome)]."""
