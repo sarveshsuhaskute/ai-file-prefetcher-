@@ -57,7 +57,9 @@ def daemon_cost(name):
                         ("cpu_user", r"CPU Time: User ([\d.]+)s"), ("cpu_sys", r"Sys ([\d.]+)s"), ("rss_kb", r"Max RSS \(RAM\): (\d+) KB"),
                         ("evicted_dead", r"evicted (\d+) files after use"), ("adapt_cuts", r"'cuts': (\d+)"),
                         ("adapt_samples", r"'samples': (\d+)"), ("adapt_avg_mb", r"'avg_limit_mb': ([\d.]+)"),
-                        ("ab_tests", r"'tests': (\d+)"), ("ab_flips", r"'flips': (\d+)"), ("ab_on_s", r"'on_time_s': ([\d.]+)")):
+                        ("ab_tests", r"'tests': (\d+)"), ("ab_flips", r"'flips': (\d+)"), ("ab_on_s", r"'on_time_s': ([\d.]+)"),
+                        ("gate_residency", r"'residency_ewma': ([\d.]+)"), ("gate_switches", r"'switches': (\d+)"),
+                        ("gate_skipped", r"'skipped_opens': (\d+)")):
             m = re.findall(rx, blk)
             if m:
                 d[key] = sum(float(x) for x in m) / len(m)     # mean over runs where printed once per run
@@ -69,7 +71,7 @@ LOGS = ["v6_pressure.log", "v6_noise.log", "v3_slowdisk400MBs_think10ms_ballast9
         "v7_apps_unlimited.log", "v7_apps_mem400.log", "v7_apps_mem300.log", "v8_slowdisk_think100.log",
         "v8_slowdisk_think10.log", "v8_pressure.log", "v8_apps_mem400.log", "vm2_pressure.log", "vm2_noise.log", "v9_apps_mem300.log", "v9_apps_unlimited.log",
         "v9_pressure.log", "v9_slowdisk_think10.log", "v10_slowdev_think10.log", "v10_apps_mem300_evict.log",
-        "v10_cgroupcap_idle.log", "v11_slowdev_ab.log", "v11_pressure_ab.log", "v12_slowdev_ab.log"]
+        "v10_cgroupcap_idle.log", "v11_slowdev_ab.log", "v11_pressure_ab.log", "v12_slowdev_ab.log", "v13_slowdev_gates.log"]
 
 
 data = {
@@ -94,12 +96,13 @@ data = {
     "v11_slowdev": load("v11_slowdev_ab.log"),
     "v11_pressure": load("v11_pressure_ab.log"),
     "v12_slowdev": load("v12_slowdev_ab.log"),
+    "v13_slowdev": load("v13_slowdev_gates.log"),
     "apps10": apps("v10_apps_mem300_evict.log"),
     "cost": {n.rsplit(".", 1)[0]: daemon_cost(n) for n in ("v7_apps_mem300.log", "v8_apps_mem400.log", "v8_pressure.log",
                                                             "v8_slowdisk_think10.log", "v8_slowdisk_think100.log", "vm2_pressure.log",
                                                             "v9_apps_mem300.log", "v9_apps_unlimited.log", "v9_pressure.log",
                                                             "v9_slowdisk_think10.log", "v10_slowdev_think10.log", "v11_pressure_ab.log",
-                                                            "v11_slowdev_ab.log", "v12_slowdev_ab.log")},
+                                                            "v11_slowdev_ab.log", "v12_slowdev_ab.log", "v13_slowdev_gates.log")},
     "sig": {n.rsplit(".", 1)[0]: sig(n) for n in LOGS},
     "willneed": json.load(open(os.path.join(RAW, "willneed_probe.json"))) if os.path.exists(os.path.join(RAW, "willneed_probe.json")) else None,
 }

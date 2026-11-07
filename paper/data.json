@@ -1498,7 +1498,140 @@
    "us_per_event": 69.0
   }
  },
- "v12_slowdev": {},
+ "v12_slowdev": {
+  "1": {
+   "name": "1. No Daemon (Default Linux Readahead)",
+   "hit": 65.16,
+   "sd": 4.4,
+   "n": 4,
+   "reads": 2564,
+   "mean": 59.5,
+   "p50": 4.45,
+   "p95": 190.76,
+   "p99": 208.67,
+   "runs_reads": [
+    2938,
+    2257,
+    2735,
+    2328
+   ]
+  },
+  "4": {
+   "name": "4. Full Context-Aware AI",
+   "hit": 8.62,
+   "sd": 3.83,
+   "n": 4,
+   "reads": 864,
+   "mean": 196.83,
+   "p50": 190.81,
+   "p95": 235.03,
+   "p99": 326.17,
+   "runs_reads": [
+    848,
+    849,
+    917,
+    844
+   ],
+   "useful": 442,
+   "issued": 449,
+   "us_per_event": 144.4
+  },
+  "20": {
+   "name": "20. Full AI + on/off self-test (prefetch only when it pays)",
+   "hit": 2.68,
+   "sd": 1.97,
+   "n": 4,
+   "reads": 865,
+   "mean": 196.37,
+   "p50": 189.25,
+   "p95": 224.66,
+   "p99": 285.94,
+   "runs_reads": [
+    876,
+    865,
+    871,
+    848
+   ],
+   "useful": 352,
+   "issued": 359,
+   "us_per_event": 122.9
+  }
+ },
+ "v13_slowdev": {
+  "1": {
+   "name": "1. No Daemon (Default Linux Readahead)",
+   "hit": 54.15,
+   "sd": 35.02,
+   "n": 3,
+   "reads": 3960,
+   "mean": 81.98,
+   "p50": 65.19,
+   "p95": 194.2,
+   "p99": 208.07,
+   "runs_reads": [
+    1535,
+    5602,
+    4744
+   ]
+  },
+  "4": {
+   "name": "4. Full Context-Aware AI",
+   "hit": 10.49,
+   "sd": 2.93,
+   "n": 3,
+   "reads": 1267,
+   "mean": 201.49,
+   "p50": 195.34,
+   "p95": 261.35,
+   "p99": 367.8,
+   "runs_reads": [
+    1251,
+    1235,
+    1314
+   ],
+   "useful": 916,
+   "issued": 922,
+   "us_per_event": 151.5
+  },
+  "20": {
+   "name": "20. Full AI + on/off self-test (prefetch only when it pays)",
+   "hit": 2.5,
+   "sd": 2.08,
+   "n": 3,
+   "reads": 1303,
+   "mean": 195.3,
+   "p50": 189.05,
+   "p95": 218.38,
+   "p99": 290.03,
+   "runs_reads": [
+    1275,
+    1319,
+    1314
+   ],
+   "useful": 94,
+   "issued": 95,
+   "us_per_event": 78.4
+  },
+  "21": {
+   "name": "21. Full AI + timeliness gate (prefetch while prefetches arrive in time)",
+   "hit": 1.64,
+   "sd": 0.07,
+   "n": 3,
+   "reads": 1328,
+   "mean": 191.3,
+   "p50": 188.63,
+   "p95": 210.43,
+   "p99": 222.31,
+   "runs_reads": [
+    1329,
+    1328,
+    1327
+   ],
+   "useful": 134,
+   "issued": 136,
+   "us_per_event": 88.8
+  }
+ },
  "apps10": {
   "1": {
    "compile": 10964.060000000001,
@@ -1863,7 +1996,67 @@
     "ab_on_s": 54.0
    }
   },
-  "v12_slowdev_ab": {}
+  "v12_slowdev_ab": {
+   "1": {},
+   "4": {
+    "useful": 442.0,
+    "issued": 449.0,
+    "events": 905.0,
+    "us_per_event": 144.4,
+    "cpu_user": 0.86,
+    "cpu_sys": 0.52,
+    "rss_kb": 171068.0
+   },
+   "20": {
+    "useful": 352.0,
+    "issued": 359.0,
+    "events": 873.0,
+    "us_per_event": 122.9,
+    "cpu_user": 0.83,
+    "cpu_sys": 0.42,
+    "rss_kb": 170928.0,
+    "ab_tests": 1.0,
+    "ab_flips": 0.0,
+    "ab_on_s": 52.1
+   }
+  },
+  "v13_slowdev_gates": {
+   "1": {},
+   "4": {
+    "useful": 916.0,
+    "issued": 922.0,
+    "events": 1354.0,
+    "us_per_event": 151.5,
+    "cpu_user": 1.09,
+    "cpu_sys": 1.09,
+    "rss_kb": 171060.0
+   },
+   "20": {
+    "useful": 94.0,
+    "issued": 95.0,
+    "events": 1337.0,
+    "us_per_event": 78.4,
+    "cpu_user": 0.93,
+    "cpu_sys": 0.34,
+    "rss_kb": 170868.0,
+    "ab_tests": 2.0,
+    "ab_flips": 1.0,
+    "ab_on_s": 28.2
+   },
+   "21": {
+    "useful": 134.0,
+    "issued": 136.0,
+    "events": 1349.0,
+    "us_per_event": 88.8,
+    "cpu_user": 0.99,
+    "cpu_sys": 0.36,
+    "rss_kb": 170808.0,
+    "adapt_samples": 134.0,
+    "gate_residency": 0.13,
+    "gate_switches": 1.0,
+    "gate_skipped": 908.0
+   }
+  }
  },
  "sig": {
   "v6_pressure": {
@@ -4086,7 +4279,322 @@
     }
    }
   },
-  "v12_slowdev_ab": {}
+  "v12_slowdev_ab": {
+   "vs_none": {
+    "4": {
+     "throughput (per run)": [
+      -66.29,
+      -86.38,
+      -46.2,
+      0.0017327033028367248
+     ],
+     "median latency": [
+      4185.51,
+      4150.61,
+      4220.42,
+      6.191542660061082e-11
+     ],
+     "p99 latency": [
+      56.31,
+      25.04,
+      87.58,
+      0.01054631398740617
+     ],
+     "pages scanned by reclaim": [
+      -2.28,
+      -3.19,
+      -1.37,
+      0.0016781882135060132
+     ],
+     "pages scanned by direct reclaim": [
+      1160.0,
+      -1077.67,
+      3397.67,
+      0.20130980665334466
+     ],
+     "direct-reclaim stalls": [
+      1160.0,
+      -1077.67,
+      3397.67,
+      0.20130980665334466
+     ]
+    },
+    "20": {
+     "throughput (per run)": [
+      -66.27,
+      -86.49,
+      -46.05,
+      0.0018660447398761429
+     ],
+     "median latency": [
+      4150.31,
+      4128.27,
+      4172.34,
+      9.780876061926866e-15
+     ],
+     "p99 latency": [
+      37.03,
+      -10.66,
+      84.73,
+      0.08999230219695241
+     ],
+     "pages scanned by reclaim": [
+      0.44,
+      -1.85,
+      2.73,
+      0.6177441186964445
+     ],
+     "pages scanned by direct reclaim": [
+      2900.0,
+      -1294.97,
+      7094.97,
+      0.11567285764661286
+     ],
+     "direct-reclaim stalls": [
+      2900.0,
+      -1294.97,
+      7094.97,
+      0.11567285764661286
+     ]
+    }
+   },
+   "vs_full": {
+    "20": {
+     "throughput (per run)": [
+      0.06,
+      -6.09,
+      6.2,
+      0.9798953093931271
+     ],
+     "median latency": [
+      -0.82,
+      -1.64,
+      -0.0,
+      0.04926081598395706
+     ],
+     "p99 latency": [
+      -12.33,
+      -41.51,
+      16.84,
+      0.32963221451172464
+     ],
+     "pages scanned by reclaim": [
+      2.79,
+      0.37,
+      5.21,
+      0.03442227594565327
+     ],
+     "pages scanned by direct reclaim": [
+      138.1,
+      -176.49,
+      452.68,
+      0.3032354769010026
+     ],
+     "direct-reclaim stalls": [
+      138.1,
+      -176.49,
+      452.68,
+      0.3032354769010026
+     ]
+    }
+   }
+  },
+  "v13_slowdev_gates": {
+   "vs_none": {
+    "4": {
+     "throughput (per run)": [
+      -68.02,
+      -202.41,
+      66.38,
+      0.16143498365096642
+     ],
+     "median latency": [
+      199.64,
+      -201.67,
+      600.95,
+      0.16651719233125306
+     ],
+     "p99 latency": [
+      76.76,
+      60.53,
+      93.0,
+      0.0019054408924729436
+     ],
+     "pages scanned by reclaim": [
+      -5.61,
+      -7.38,
+      -3.84,
+      0.002879171085193215
+     ],
+     "pages scanned by direct reclaim": [
+      102.98,
+      -169.53,
+      375.48,
+      0.32822270587951885
+     ],
+     "direct-reclaim stalls": [
+      102.98,
+      -169.53,
+      375.48,
+      0.32822270587951885
+     ]
+    },
+    "20": {
+     "throughput (per run)": [
+      -67.11,
+      -201.55,
+      67.34,
+      0.16484253381183575
+     ],
+     "median latency": [
+      189.99,
+      -213.39,
+      593.38,
+      0.17994838469247595
+     ],
+     "p99 latency": [
+      39.39,
+      -30.54,
+      109.31,
+      0.13671200182346313
+     ],
+     "pages scanned by reclaim": [
+      -0.44,
+      -5.39,
+      4.52,
+      0.7511785645722524
+     ],
+     "pages scanned by direct reclaim": [
+      42.86,
+      -231.0,
+      316.72,
+      0.6763211646189773
+     ],
+     "direct-reclaim stalls": [
+      42.86,
+      -231.0,
+      316.72,
+      0.6763211646189773
+     ]
+    },
+    "21": {
+     "throughput (per run)": [
+      -66.47,
+      -200.94,
+      68.0,
+      0.1672913201177395
+     ],
+     "median latency": [
+      189.36,
+      -214.04,
+      592.76,
+      0.180851307605016
+     ],
+     "p99 latency": [
+      6.84,
+      0.75,
+      12.93,
+      0.03767800810028678
+     ],
+     "pages scanned by reclaim": [
+      1.9,
+      1.18,
+      2.62,
+      0.004717622888192075
+     ],
+     "pages scanned by direct reclaim": [
+      185.71,
+      -91.24,
+      462.66,
+      0.1215537975508512
+     ],
+     "direct-reclaim stalls": [
+      185.71,
+      -91.24,
+      462.66,
+      0.1215537975508512
+     ]
+    }
+   },
+   "vs_full": {
+    "20": {
+     "throughput (per run)": [
+      2.84,
+      -3.91,
+      9.6,
+      0.2814168638650053
+     ],
+     "median latency": [
+      -3.22,
+      -11.33,
+      4.89,
+      0.23265895848683518
+     ],
+     "p99 latency": [
+      -21.15,
+      -58.13,
+      15.83,
+      0.14228683437793888
+     ],
+     "pages scanned by reclaim": [
+      5.48,
+      0.78,
+      10.18,
+      0.03509701721808193
+     ],
+     "pages scanned by direct reclaim": [
+      -29.62,
+      -129.09,
+      69.86,
+      0.4513040349289795
+     ],
+     "direct-reclaim stalls": [
+      -29.62,
+      -129.09,
+      69.86,
+      0.4513040349289795
+     ]
+    },
+    "21": {
+     "throughput (per run)": [
+      4.84,
+      -3.34,
+      13.03,
+      0.1259246291753678
+     ],
+     "median latency": [
+      -3.43,
+      -11.63,
+      4.77,
+      0.21373101954056142
+     ],
+     "p99 latency": [
+      -39.56,
+      -47.85,
+      -31.26,
+      0.0009180611145319165
+     ],
+     "pages scanned by reclaim": [
+      7.95,
+      5.85,
+      10.05,
+      0.003321905979338133
+     ],
+     "pages scanned by direct reclaim": [
+      40.76,
+      -42.65,
+      124.17,
+      0.24338863697408342
+     ],
+     "direct-reclaim stalls": [
+      40.76,
+      -42.65,
+      124.17,
+      0.24338863697408342
+     ]
+    }
+   }
+  }
  },
  "willneed": {
   "file": "/tmp/builder_7.dat",
